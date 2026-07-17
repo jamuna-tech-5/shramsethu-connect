@@ -16,6 +16,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppIndexRouteImport } from './routes/app.index'
 import { Route as AppSchemesRouteImport } from './routes/app.schemes'
 import { Route as AppProfileRouteImport } from './routes/app.profile'
+import { Route as AppLoanRouteImport } from './routes/app.loan'
 import { Route as AppIncomeRouteImport } from './routes/app.income'
 import { Route as AppGigscoreRouteImport } from './routes/app.gigscore'
 
@@ -54,6 +55,11 @@ const AppProfileRoute = AppProfileRouteImport.update({
   path: '/profile',
   getParentRoute: () => AppRoute,
 } as any)
+const AppLoanRoute = AppLoanRouteImport.update({
+  id: '/loan',
+  path: '/loan',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppIncomeRoute = AppIncomeRouteImport.update({
   id: '/income',
   path: '/income',
@@ -72,6 +78,7 @@ export interface FileRoutesByFullPath {
   '/onboarding': typeof OnboardingRoute
   '/app/gigscore': typeof AppGigscoreRoute
   '/app/income': typeof AppIncomeRoute
+  '/app/loan': typeof AppLoanRoute
   '/app/profile': typeof AppProfileRoute
   '/app/schemes': typeof AppSchemesRoute
   '/app/': typeof AppIndexRoute
@@ -82,6 +89,7 @@ export interface FileRoutesByTo {
   '/onboarding': typeof OnboardingRoute
   '/app/gigscore': typeof AppGigscoreRoute
   '/app/income': typeof AppIncomeRoute
+  '/app/loan': typeof AppLoanRoute
   '/app/profile': typeof AppProfileRoute
   '/app/schemes': typeof AppSchemesRoute
   '/app': typeof AppIndexRoute
@@ -94,6 +102,7 @@ export interface FileRoutesById {
   '/onboarding': typeof OnboardingRoute
   '/app/gigscore': typeof AppGigscoreRoute
   '/app/income': typeof AppIncomeRoute
+  '/app/loan': typeof AppLoanRoute
   '/app/profile': typeof AppProfileRoute
   '/app/schemes': typeof AppSchemesRoute
   '/app/': typeof AppIndexRoute
@@ -107,6 +116,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/app/gigscore'
     | '/app/income'
+    | '/app/loan'
     | '/app/profile'
     | '/app/schemes'
     | '/app/'
@@ -117,6 +127,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/app/gigscore'
     | '/app/income'
+    | '/app/loan'
     | '/app/profile'
     | '/app/schemes'
     | '/app'
@@ -128,6 +139,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/app/gigscore'
     | '/app/income'
+    | '/app/loan'
     | '/app/profile'
     | '/app/schemes'
     | '/app/'
@@ -191,6 +203,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppProfileRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/loan': {
+      id: '/app/loan'
+      path: '/loan'
+      fullPath: '/app/loan'
+      preLoaderRoute: typeof AppLoanRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/income': {
       id: '/app/income'
       path: '/income'
@@ -211,6 +230,7 @@ declare module '@tanstack/react-router' {
 interface AppRouteChildren {
   AppGigscoreRoute: typeof AppGigscoreRoute
   AppIncomeRoute: typeof AppIncomeRoute
+  AppLoanRoute: typeof AppLoanRoute
   AppProfileRoute: typeof AppProfileRoute
   AppSchemesRoute: typeof AppSchemesRoute
   AppIndexRoute: typeof AppIndexRoute
@@ -219,6 +239,7 @@ interface AppRouteChildren {
 const AppRouteChildren: AppRouteChildren = {
   AppGigscoreRoute: AppGigscoreRoute,
   AppIncomeRoute: AppIncomeRoute,
+  AppLoanRoute: AppLoanRoute,
   AppProfileRoute: AppProfileRoute,
   AppSchemesRoute: AppSchemesRoute,
   AppIndexRoute: AppIndexRoute,
