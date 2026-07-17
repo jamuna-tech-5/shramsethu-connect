@@ -25,6 +25,11 @@ export type Profile = {
   onboarded?: boolean;
   documents?: Record<string, "not_uploaded" | "pending" | "verified">;
   status?: "online" | "offline" | "on_duty" | "available";
+  preferences?: {
+    notifications: boolean;
+    darkMode: boolean;
+    locationSharing: boolean;
+  };
 };
 
 type Ctx = {
@@ -34,6 +39,7 @@ type Ctx = {
   signIn: (email: string, _password: string) => boolean;
   signOut: () => void;
   update: (patch: Partial<Profile>) => void;
+  reset: () => void;
 };
 
 const StoreContext = createContext<Ctx | null>(null);
@@ -91,6 +97,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (!profile) return;
         persist({ ...profile, ...patch });
       },
+      reset: () => persist(null),
     }),
     [profile],
   );

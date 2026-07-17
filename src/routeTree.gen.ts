@@ -14,6 +14,8 @@ import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppIndexRouteImport } from './routes/app.index'
+import { Route as AppSosRouteImport } from './routes/app.sos'
+import { Route as AppSettingsRouteImport } from './routes/app.settings'
 import { Route as AppSchemesRouteImport } from './routes/app.schemes'
 import { Route as AppProfileRouteImport } from './routes/app.profile'
 import { Route as AppLocationRouteImport } from './routes/app.location'
@@ -22,6 +24,7 @@ import { Route as AppIncomeRouteImport } from './routes/app.income'
 import { Route as AppGigscoreRouteImport } from './routes/app.gigscore'
 import { Route as AppDocumentsRouteImport } from './routes/app.documents'
 import { Route as AppChargingRouteImport } from './routes/app.charging'
+import { Route as AppAdminRouteImport } from './routes/app.admin'
 
 const OnboardingRoute = OnboardingRouteImport.update({
   id: '/onboarding',
@@ -46,6 +49,16 @@ const IndexRoute = IndexRouteImport.update({
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSosRoute = AppSosRouteImport.update({
+  id: '/sos',
+  path: '/sos',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSettingsRoute = AppSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
   getParentRoute: () => AppRoute,
 } as any)
 const AppSchemesRoute = AppSchemesRouteImport.update({
@@ -88,12 +101,18 @@ const AppChargingRoute = AppChargingRouteImport.update({
   path: '/charging',
   getParentRoute: () => AppRoute,
 } as any)
+const AppAdminRoute = AppAdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
   '/auth': typeof AuthRoute
   '/onboarding': typeof OnboardingRoute
+  '/app/admin': typeof AppAdminRoute
   '/app/charging': typeof AppChargingRoute
   '/app/documents': typeof AppDocumentsRoute
   '/app/gigscore': typeof AppGigscoreRoute
@@ -102,12 +121,15 @@ export interface FileRoutesByFullPath {
   '/app/location': typeof AppLocationRoute
   '/app/profile': typeof AppProfileRoute
   '/app/schemes': typeof AppSchemesRoute
+  '/app/settings': typeof AppSettingsRoute
+  '/app/sos': typeof AppSosRoute
   '/app/': typeof AppIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/onboarding': typeof OnboardingRoute
+  '/app/admin': typeof AppAdminRoute
   '/app/charging': typeof AppChargingRoute
   '/app/documents': typeof AppDocumentsRoute
   '/app/gigscore': typeof AppGigscoreRoute
@@ -116,6 +138,8 @@ export interface FileRoutesByTo {
   '/app/location': typeof AppLocationRoute
   '/app/profile': typeof AppProfileRoute
   '/app/schemes': typeof AppSchemesRoute
+  '/app/settings': typeof AppSettingsRoute
+  '/app/sos': typeof AppSosRoute
   '/app': typeof AppIndexRoute
 }
 export interface FileRoutesById {
@@ -124,6 +148,7 @@ export interface FileRoutesById {
   '/app': typeof AppRouteWithChildren
   '/auth': typeof AuthRoute
   '/onboarding': typeof OnboardingRoute
+  '/app/admin': typeof AppAdminRoute
   '/app/charging': typeof AppChargingRoute
   '/app/documents': typeof AppDocumentsRoute
   '/app/gigscore': typeof AppGigscoreRoute
@@ -132,6 +157,8 @@ export interface FileRoutesById {
   '/app/location': typeof AppLocationRoute
   '/app/profile': typeof AppProfileRoute
   '/app/schemes': typeof AppSchemesRoute
+  '/app/settings': typeof AppSettingsRoute
+  '/app/sos': typeof AppSosRoute
   '/app/': typeof AppIndexRoute
 }
 export interface FileRouteTypes {
@@ -141,6 +168,7 @@ export interface FileRouteTypes {
     | '/app'
     | '/auth'
     | '/onboarding'
+    | '/app/admin'
     | '/app/charging'
     | '/app/documents'
     | '/app/gigscore'
@@ -149,12 +177,15 @@ export interface FileRouteTypes {
     | '/app/location'
     | '/app/profile'
     | '/app/schemes'
+    | '/app/settings'
+    | '/app/sos'
     | '/app/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/auth'
     | '/onboarding'
+    | '/app/admin'
     | '/app/charging'
     | '/app/documents'
     | '/app/gigscore'
@@ -163,6 +194,8 @@ export interface FileRouteTypes {
     | '/app/location'
     | '/app/profile'
     | '/app/schemes'
+    | '/app/settings'
+    | '/app/sos'
     | '/app'
   id:
     | '__root__'
@@ -170,6 +203,7 @@ export interface FileRouteTypes {
     | '/app'
     | '/auth'
     | '/onboarding'
+    | '/app/admin'
     | '/app/charging'
     | '/app/documents'
     | '/app/gigscore'
@@ -178,6 +212,8 @@ export interface FileRouteTypes {
     | '/app/location'
     | '/app/profile'
     | '/app/schemes'
+    | '/app/settings'
+    | '/app/sos'
     | '/app/'
   fileRoutesById: FileRoutesById
 }
@@ -223,6 +259,20 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/app/'
       preLoaderRoute: typeof AppIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/sos': {
+      id: '/app/sos'
+      path: '/sos'
+      fullPath: '/app/sos'
+      preLoaderRoute: typeof AppSosRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/settings': {
+      id: '/app/settings'
+      path: '/settings'
+      fullPath: '/app/settings'
+      preLoaderRoute: typeof AppSettingsRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/schemes': {
@@ -281,10 +331,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppChargingRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/admin': {
+      id: '/app/admin'
+      path: '/admin'
+      fullPath: '/app/admin'
+      preLoaderRoute: typeof AppAdminRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
 interface AppRouteChildren {
+  AppAdminRoute: typeof AppAdminRoute
   AppChargingRoute: typeof AppChargingRoute
   AppDocumentsRoute: typeof AppDocumentsRoute
   AppGigscoreRoute: typeof AppGigscoreRoute
@@ -293,10 +351,13 @@ interface AppRouteChildren {
   AppLocationRoute: typeof AppLocationRoute
   AppProfileRoute: typeof AppProfileRoute
   AppSchemesRoute: typeof AppSchemesRoute
+  AppSettingsRoute: typeof AppSettingsRoute
+  AppSosRoute: typeof AppSosRoute
   AppIndexRoute: typeof AppIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppAdminRoute: AppAdminRoute,
   AppChargingRoute: AppChargingRoute,
   AppDocumentsRoute: AppDocumentsRoute,
   AppGigscoreRoute: AppGigscoreRoute,
@@ -305,6 +366,8 @@ const AppRouteChildren: AppRouteChildren = {
   AppLocationRoute: AppLocationRoute,
   AppProfileRoute: AppProfileRoute,
   AppSchemesRoute: AppSchemesRoute,
+  AppSettingsRoute: AppSettingsRoute,
+  AppSosRoute: AppSosRoute,
   AppIndexRoute: AppIndexRoute,
 }
 

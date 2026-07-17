@@ -62,11 +62,11 @@ function SosPage() {
         <div className="space-y-4">
           <div className="rounded-2xl border bg-card p-5 shadow-sm">
             <h3 className="text-sm font-semibold">Your emergency contact</h3>
-            {profile?.emergencyContact?.name ? (
+            {profile?.emergencyName ? (
               <div className="mt-3 rounded-xl border p-4">
-                <div className="text-sm font-semibold">{profile.emergencyContact.name}</div>
+                <div className="text-sm font-semibold">{profile.emergencyName}</div>
                 <div className="text-xs text-muted-foreground">
-                  {profile.emergencyContact.relation ?? "Contact"} · {profile.emergencyContact.phone}
+                  Contact · {profile.emergencyPhone}
                 </div>
               </div>
             ) : (
