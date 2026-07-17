@@ -15,6 +15,7 @@ import { Route as AppRouteImport } from './routes/app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppIndexRouteImport } from './routes/app.index'
 import { Route as AppProfileRouteImport } from './routes/app.profile'
+import { Route as AppGigscoreRouteImport } from './routes/app.gigscore'
 
 const OnboardingRoute = OnboardingRouteImport.update({
   id: '/onboarding',
@@ -46,12 +47,18 @@ const AppProfileRoute = AppProfileRouteImport.update({
   path: '/profile',
   getParentRoute: () => AppRoute,
 } as any)
+const AppGigscoreRoute = AppGigscoreRouteImport.update({
+  id: '/gigscore',
+  path: '/gigscore',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
   '/auth': typeof AuthRoute
   '/onboarding': typeof OnboardingRoute
+  '/app/gigscore': typeof AppGigscoreRoute
   '/app/profile': typeof AppProfileRoute
   '/app/': typeof AppIndexRoute
 }
@@ -59,6 +66,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/onboarding': typeof OnboardingRoute
+  '/app/gigscore': typeof AppGigscoreRoute
   '/app/profile': typeof AppProfileRoute
   '/app': typeof AppIndexRoute
 }
@@ -68,20 +76,29 @@ export interface FileRoutesById {
   '/app': typeof AppRouteWithChildren
   '/auth': typeof AuthRoute
   '/onboarding': typeof OnboardingRoute
+  '/app/gigscore': typeof AppGigscoreRoute
   '/app/profile': typeof AppProfileRoute
   '/app/': typeof AppIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/app' | '/auth' | '/onboarding' | '/app/profile' | '/app/'
+  fullPaths:
+    | '/'
+    | '/app'
+    | '/auth'
+    | '/onboarding'
+    | '/app/gigscore'
+    | '/app/profile'
+    | '/app/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/auth' | '/onboarding' | '/app/profile' | '/app'
+  to: '/' | '/auth' | '/onboarding' | '/app/gigscore' | '/app/profile' | '/app'
   id:
     | '__root__'
     | '/'
     | '/app'
     | '/auth'
     | '/onboarding'
+    | '/app/gigscore'
     | '/app/profile'
     | '/app/'
   fileRoutesById: FileRoutesById
@@ -137,15 +154,24 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppProfileRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/gigscore': {
+      id: '/app/gigscore'
+      path: '/gigscore'
+      fullPath: '/app/gigscore'
+      preLoaderRoute: typeof AppGigscoreRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
 interface AppRouteChildren {
+  AppGigscoreRoute: typeof AppGigscoreRoute
   AppProfileRoute: typeof AppProfileRoute
   AppIndexRoute: typeof AppIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppGigscoreRoute: AppGigscoreRoute,
   AppProfileRoute: AppProfileRoute,
   AppIndexRoute: AppIndexRoute,
 }
