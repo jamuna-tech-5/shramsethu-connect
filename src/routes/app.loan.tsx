@@ -2,12 +2,15 @@ import { createFileRoute } from "@tanstack/react-router";
 import { CheckCircle2, ShieldCheck, Sparkles, TrendingUp, Wallet } from "lucide-react";
 
 import { PageHeader } from "@/components/PageHeader";
+import { useQuery } from "@tanstack/react-query";
+import { getLoanEligibility } from "@/lib/api.functions";
 
 export const Route = createFileRoute("/app/loan")({
   component: LoanPage,
 });
 
 function LoanPage() {
+  const { data } = useQuery({ queryKey: ["loan"], queryFn: () => getLoanEligibility() });
   return (
     <div className="space-y-6">
       <PageHeader
@@ -54,8 +57,8 @@ function LoanPage() {
         <div className="rounded-2xl border bg-card p-5 shadow-sm">
           <h3 className="text-sm font-semibold">Estimated eligibility</h3>
           <div className="mt-4 rounded-2xl gradient-soft p-5 text-center">
-            <div className="text-3xl font-bold text-gradient">—</div>
-            <div className="mt-1 text-xs text-muted-foreground">Requires verified data</div>
+            <div className="text-3xl font-bold text-gradient">{data?.eligible ? "Eligible" : "—"}</div>
+            <div className="mt-1 text-xs text-muted-foreground">{data?.reason === "insufficient_data" ? "Requires verified data" : data?.eligible ? "Pending partner bank" : "Requires verified data"}</div>
           </div>
           <div className="mt-5 space-y-2 text-xs text-muted-foreground">
             <p><span className="font-semibold text-foreground">No partner banks yet.</span> ShramSethu is a new platform. Bank and NBFC integrations are on the roadmap.</p>

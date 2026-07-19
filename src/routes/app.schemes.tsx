@@ -6,66 +6,29 @@ import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { useQuery } from "@tanstack/react-query";
+import { listSchemes } from "@/lib/api.functions";
 
 export const Route = createFileRoute("/app/schemes")({
   component: SchemesPage,
 });
 
-// Publicly known Indian schemes; no fake approvals or benefits assigned to the user.
-const SCHEMES = [
-  {
-    name: "e-Shram Card",
-    desc: "National database for unorganised workers offering identity and welfare benefits.",
-    elig: "Unorganised workers aged 16–59.",
-    tag: "Identity",
-  },
-  {
-    name: "PM Shram Yogi Maan-dhan (PM-SYM)",
-    desc: "Voluntary pension scheme for unorganised workers with monthly pension after 60.",
-    elig: "Age 18–40, monthly income ≤ ₹15,000.",
-    tag: "Pension",
-  },
-  {
-    name: "Ayushman Bharat (PM-JAY)",
-    desc: "Health cover up to ₹5 lakh per family per year at empanelled hospitals.",
-    elig: "As per SECC eligibility list.",
-    tag: "Health",
-  },
-  {
-    name: "PMSBY",
-    desc: "Accidental death and disability insurance at a very low annual premium.",
-    elig: "Age 18–70 with a bank account.",
-    tag: "Insurance",
-  },
-  {
-    name: "Building & Other Construction Workers Welfare",
-    desc: "State welfare boards offering maternity, education and pension benefits.",
-    elig: "Registered construction workers.",
-    tag: "Welfare",
-  },
-  {
-    name: "PM SVANidhi",
-    desc: "Affordable working-capital loans for street vendors.",
-    elig: "Street vendors with a Certificate of Vending.",
-    tag: "Credit",
-  },
-];
-
-const TAGS = ["All", "Identity", "Pension", "Health", "Insurance", "Welfare", "Credit"];
+const TAGS = ["All", "Registration", "Pension", "Health", "Insurance", "Welfare", "Credit"];
 
 function SchemesPage() {
   const [q, setQ] = useState("");
   const [tag, setTag] = useState("All");
+  const { data: SCHEMES = [] } = useQuery({ queryKey: ["schemes"], queryFn: () => listSchemes() });
 
   const filtered = useMemo(
     () =>
       SCHEMES.filter(
         (s) =>
-          (tag === "All" || s.tag === tag) &&
+          (tag === "All" || s.category === tag) &&
           (s.name.toLowerCase().includes(q.toLowerCase()) ||
-            s.desc.toLowerCase().includes(q.toLowerCase())),
+            (s.summary ?? "").toLowerCase().includes(q.toLowerCase())),
       ),
-    [q, tag],
+    [q, tag, SCHEMES],
   );
 
   return (
@@ -104,17 +67,17 @@ function SchemesPage() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
           {filtered.map((s) => (
-            <div key={s.name} className="rounded-2xl border bg-card p-5 shadow-sm transition hover:shadow-soft">
+            <div key={s.id} className="rounded-2xl border bg-card p-5 shadow-sm transition hover:shadow-soft">
               <div className="flex items-start justify-between gap-3">
                 <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl gradient-soft text-primary">
                   <Landmark className="h-4 w-4" />
                 </div>
-                <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">{s.tag}</span>
+                <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">{s.category}</span>
               </div>
               <h3 className="mt-3 text-sm font-semibold">{s.name}</h3>
-              <p className="mt-1 text-xs text-muted-foreground">{s.desc}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{s.summary}</p>
               <div className="mt-3 rounded-xl bg-muted/60 px-3 py-2 text-[11px] text-muted-foreground">
-                <span className="font-semibold text-foreground">Eligibility · </span>{s.elig}
+                <span className="font-semibold text-foreground">Eligibility · </span>{s.eligibility ?? "See official notification"}
               </div>
               <Button variant="ghost" size="sm" className="mt-3 rounded-full text-primary">
                 Learn more <ExternalLink className="ml-1 h-3 w-3" />

@@ -3,12 +3,27 @@ import { Activity, AlertTriangle, ShieldCheck, Users } from "lucide-react";
 
 import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
+import { useQuery } from "@tanstack/react-query";
+import { adminStats } from "@/lib/api.functions";
+import { useStore } from "@/lib/store";
 
 export const Route = createFileRoute("/app/admin")({
   component: AdminPage,
 });
 
 function AdminPage() {
+  const { profile } = useStore();
+  const isAdmin = !!profile?.isAdmin;
+  const q = useQuery({ queryKey: ["adminStats"], queryFn: () => adminStats(), enabled: isAdmin });
+  const s = q.data;
+  if (!isAdmin) {
+    return (
+      <div className="space-y-6">
+        <PageHeader eyebrow="Internal" title="Admin Dashboard" description="Restricted area." />
+        <EmptyState icon={ShieldCheck} title="Access restricted" description="You need administrator privileges to view this page." />
+      </div>
+    );
+  }
   return (
     <div className="space-y-6">
       <PageHeader
@@ -19,10 +34,10 @@ function AdminPage() {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[
-          { l: "Registered workers", v: "0", i: Users },
-          { l: "Verifications pending", v: "0", i: ShieldCheck },
-          { l: "Active today", v: "0", i: Activity },
-          { l: "Open SOS alerts", v: "0", i: AlertTriangle },
+          { l: "Registered workers", v: String(s?.registeredWorkers ?? 0), i: Users },
+          { l: "Verifications pending", v: String(s?.pendingVerifications ?? 0), i: ShieldCheck },
+          { l: "Active today", v: String(s?.activeToday ?? 0), i: Activity },
+          { l: "Open SOS alerts", v: String(s?.openSOS ?? 0), i: AlertTriangle },
         ].map((s) => (
           <div key={s.l} className="rounded-2xl border bg-card p-5 shadow-sm">
             <div className="flex items-center justify-between text-muted-foreground">

@@ -2,12 +2,16 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Award, Info, Sparkles, TrendingUp } from "lucide-react";
 
 import { PageHeader } from "@/components/PageHeader";
+import { useQuery } from "@tanstack/react-query";
+import { getMyGigscore } from "@/lib/api.functions";
 
 export const Route = createFileRoute("/app/gigscore")({
   component: GigScorePage,
 });
 
 function GigScorePage() {
+  const { data } = useQuery({ queryKey: ["gigscore"], queryFn: () => getMyGigscore() });
+  const score = data?.score;
   return (
     <div className="space-y-6">
       <PageHeader
@@ -22,16 +26,17 @@ function GigScorePage() {
           <div className="flex flex-col items-center text-center">
             <div className="grid h-40 w-40 place-items-center rounded-full border-8 border-muted">
               <div className="text-center">
-                <div className="text-5xl font-bold text-gradient">—</div>
-                <div className="mt-1 text-[11px] font-medium uppercase tracking-widest text-muted-foreground">Awaiting data</div>
+                <div className="text-5xl font-bold text-gradient">{score ?? "—"}</div>
+                <div className="mt-1 text-[11px] font-medium uppercase tracking-widest text-muted-foreground">{score ? "Verified" : "Awaiting data"}</div>
               </div>
             </div>
             <h3 className="mt-6 max-w-md text-base font-semibold">
-              Your GigScore will be calculated after verified work activity is added.
+              {score ? "Your GigScore reflects verified work activity." : "Your GigScore will be calculated after verified work activity is added."}
             </h3>
             <p className="mt-2 max-w-md text-sm text-muted-foreground">
-              Log gigs, verify documents and connect income sources to start building
-              your reputation.
+              {data?.reason === "insufficient_data"
+                ? `We need at least 5 verified work records (currently ${data.verifiedCount ?? 0}) before we can compute a fair GigScore.`
+                : "Log gigs, verify documents and connect income sources to start building your reputation."}
             </p>
           </div>
         </div>

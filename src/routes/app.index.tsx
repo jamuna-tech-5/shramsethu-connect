@@ -17,6 +17,8 @@ import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { profileCompletion, useStore } from "@/lib/store";
+import { useQuery } from "@tanstack/react-query";
+import { listMyDocuments, listMyNotifications, listMyWorkHistory, getMyGigscore } from "@/lib/api.functions";
 
 export const Route = createFileRoute("/app/")({
   component: Dashboard,
@@ -25,8 +27,12 @@ export const Route = createFileRoute("/app/")({
 function Dashboard() {
   const { profile } = useStore();
   const pct = profileCompletion(profile);
-  const verified = Object.values(profile?.documents ?? {}).filter((v) => v === "verified").length;
-  const totalDocs = Object.keys(profile?.documents ?? { a: 0 }).length || 3;
+  const docs = useQuery({ queryKey: ["docs"], queryFn: () => listMyDocuments(), enabled: !!profile });
+  const notifs = useQuery({ queryKey: ["notifs"], queryFn: () => listMyNotifications(), enabled: !!profile });
+  const work = useQuery({ queryKey: ["work"], queryFn: () => listMyWorkHistory(), enabled: !!profile });
+  const gig = useQuery({ queryKey: ["gig"], queryFn: () => getMyGigscore(), enabled: !!profile });
+  const verified = (docs.data ?? []).filter((d) => d.status === "verified").length;
+  const totalDocs = Math.max(docs.data?.length ?? 0, 3);
 
   return (
     <div className="space-y-6">
@@ -54,7 +60,7 @@ function Dashboard() {
         <div className="mt-6 grid gap-4 sm:grid-cols-3">
           <StatChip label="Profile completion" value={`${pct}%`} sub={pct < 100 ? "Keep going" : "Complete"} />
           <StatChip label="Verification" value={`${verified}/${totalDocs}`} sub="Documents verified" />
-          <StatChip label="GigScore" value="—" sub="Awaiting activity" />
+            <StatChip label="GigScore" value={gig.data?.score ? String(gig.data.score) : "—"} sub={gig.data?.score ? "Verified" : "Awaiting activity"} />
         </div>
       </motion.div>
 
@@ -87,14 +93,30 @@ function Dashboard() {
             <Bell className="h-4 w-4 text-muted-foreground" />
           </div>
           <div className="mt-4">
-            <EmptyState icon={Activity} title="No recent activity" description="Once you start logging gigs and updates, they will appear here." />
+            {(work.data ?? []).length === 0 ? (
+              <EmptyState icon={Activity} title="No recent activity" description="Once you start logging gigs and updates, they will appear here." />
+            ) : (
+              <ul className="space-y-2">
+                {(work.data ?? []).slice(0, 5).map((w) => (
+                  <li key={w.id} className="rounded-xl border p-3 text-sm"><div className="font-semibold">{w.title}</div><div className="text-xs text-muted-foreground">{w.employer ?? "—"} · {w.category ?? "—"}</div></li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
         {/* Notifications */}
         <div className="rounded-2xl border bg-card p-5 shadow-sm">
           <h3 className="text-sm font-semibold">Notifications</h3>
           <div className="mt-4">
-            <EmptyState icon={Bell} title="You're all caught up" description="Important updates about verification and schemes will appear here." />
+            {(notifs.data ?? []).length === 0 ? (
+              <EmptyState icon={Bell} title="You're all caught up" description="Important updates about verification and schemes will appear here." />
+            ) : (
+              <ul className="space-y-2">
+                {(notifs.data ?? []).slice(0, 5).map((n) => (
+                  <li key={n.id} className="rounded-xl border p-3 text-sm"><div className="font-semibold">{n.title}</div>{n.body && <div className="text-xs text-muted-foreground">{n.body}</div>}</li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
 
