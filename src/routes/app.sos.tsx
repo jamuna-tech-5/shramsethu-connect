@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { useStore } from "@/lib/store";
+import { triggerSOS } from "@/lib/api.functions";
 
 export const Route = createFileRoute("/app/sos")({
   component: SosPage,
@@ -22,9 +23,21 @@ function SosPage() {
   const { profile } = useStore();
   const [triggered, setTriggered] = useState(false);
 
-  const trigger = () => {
+  const trigger = async () => {
     setTriggered(true);
-    toast.success("SOS triggered. Contacts will be notified when connected.");
+    const fire = (lat?: number, lng?: number) =>
+      triggerSOS({ data: { lat, lng, message: "Emergency triggered from app" } })
+        .then(() => toast.success("SOS triggered. Your emergency contact will be notified."))
+        .catch((e) => toast.error(e instanceof Error ? e.message : "Failed to trigger SOS"));
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (p) => fire(p.coords.latitude, p.coords.longitude),
+        () => fire(),
+        { timeout: 5000 },
+      );
+    } else {
+      await fire();
+    }
     setTimeout(() => setTriggered(false), 4000);
   };
 

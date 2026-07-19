@@ -4,6 +4,9 @@ import { toast } from "sonner";
 
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { listMyDocuments, recordDocument } from "@/lib/api.functions";
+import { supabase } from "@/integrations/supabase/client";
 import { useStore } from "@/lib/store";
 
 export const Route = createFileRoute("/app/documents")({
@@ -15,18 +18,32 @@ const DOCS = [
   { key: "pan", label: "PAN Card", desc: "Tax identity" },
   { key: "license", label: "Driving License", desc: "Required for drivers" },
   { key: "other", label: "Other Documents", desc: "Certifications, permits" },
-];
+] as const;
 
 function DocumentsPage() {
-  const { profile, update } = useStore();
-  const docs = profile?.documents ?? {};
+  const { session } = useStore();
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ["docs"], queryFn: () => listMyDocuments(), enabled: !!session });
+  const rows = q.data ?? [];
 
-  const upload = (key: string) => {
-    update({ documents: { ...docs, [key]: "pending" } });
-    toast.success("Uploaded. Verification pending.");
+  const upload = async (kind: "aadhaar" | "pan" | "license" | "other", file: File) => {
+    if (!session) return;
+    const path = `${session.user.id}/${kind}/${Date.now()}-${file.name}`;
+    const { error } = await supabase.storage.from("documents").upload(path, file, { upsert: false });
+    if (error) return toast.error(error.message);
+    try {
+      await recordDocument({ data: { kind, storage_path: path, file_name: file.name, mime_type: file.type || "application/octet-stream", size_bytes: file.size } });
+      toast.success("Uploaded. Verification pending.");
+      qc.invalidateQueries({ queryKey: ["docs"] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to record document");
+    }
   };
 
-  const statusFor = (key: string) => docs[key] ?? "not_uploaded";
+  const statusFor = (kind: string): "not_uploaded" | "pending" | "verified" | "rejected" => {
+    const row = rows.find((r) => r.kind === kind);
+    return (row?.status as "pending" | "verified" | "rejected" | undefined) ?? "not_uploaded";
+  };
 
   return (
     <div className="space-y-6">
@@ -66,7 +83,8 @@ function DocumentsPage() {
                     type="file"
                     className="hidden"
                     onChange={(e) => {
-                      if (e.target.files?.[0]) upload(d.key);
+                      const f = e.target.files?.[0];
+                      if (f) upload(d.key, f);
                     }}
                   />
                 </label>

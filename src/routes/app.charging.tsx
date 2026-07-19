@@ -5,6 +5,10 @@ import { useState } from "react";
 import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { useMutation } from "@tanstack/react-query";
+import { nearbyPlaces } from "@/lib/api.functions";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/app/charging")({
   component: ChargingPage,
@@ -19,6 +23,21 @@ const FILTERS = [
 function ChargingPage() {
   const [q, setQ] = useState("");
   const [f, setF] = useState<(typeof FILTERS)[number]["key"]>("all");
+  const search = useMutation({
+    mutationFn: async () => {
+      const coords = await new Promise<GeolocationPosition>((resolve, reject) => {
+        if (!("geolocation" in navigator)) return reject(new Error("Geolocation not supported"));
+        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 8000 });
+      });
+      return nearbyPlaces({ data: { lat: coords.coords.latitude, lng: coords.coords.longitude, includedType: "electric_vehicle_charging_station" } });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const stations = search.data ?? [];
+  const filtered = stations.filter((s) => {
+    const name = (s.displayName?.text ?? "").toLowerCase();
+    return !q || name.includes(q.toLowerCase()) || (s.formattedAddress ?? "").toLowerCase().includes(q.toLowerCase());
+  });
 
   return (
     <div className="space-y-6">
@@ -68,12 +87,27 @@ function ChargingPage() {
 
         <div className="rounded-2xl border bg-card p-5 shadow-sm">
           <h3 className="text-sm font-semibold">Nearby stations</h3>
+          <div className="mt-3">
+            <Button size="sm" onClick={() => search.mutate()} disabled={search.isPending} className="rounded-full gradient-primary text-white">
+              {search.isPending ? "Finding…" : "Find near me"}
+            </Button>
+          </div>
           <div className="mt-4">
-            <EmptyState
-              icon={MapPin}
-              title="No stations to show yet."
-              description="Enable location and connect an EV charging provider to view real-time availability."
-            />
+            {filtered.length === 0 ? (
+              <EmptyState icon={MapPin} title="No stations to show yet." description="Use ‘Find near me’ to load real EV charging stations from Google Maps." />
+            ) : (
+              <ul className="space-y-2">
+                {filtered.map((s) => (
+                  <li key={s.id ?? s.formattedAddress} className="rounded-xl border p-3">
+                    <div className="text-sm font-semibold">{s.displayName?.text ?? "Charging station"}</div>
+                    <div className="text-xs text-muted-foreground">{s.formattedAddress}</div>
+                    {typeof s.rating === "number" && (
+                      <div className="mt-1 text-[11px] text-muted-foreground">Rating {s.rating.toFixed(1)} · {s.userRatingCount ?? 0} reviews</div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
           <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
             <div className="rounded-xl border p-3">

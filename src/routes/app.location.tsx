@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { useStore } from "@/lib/store";
+import { recordLocation } from "@/lib/api.functions";
 
 export const Route = createFileRoute("/app/location")({
   component: LocationPage,
@@ -29,9 +30,15 @@ function LocationPage() {
       return;
     }
     navigator.geolocation.getCurrentPosition(
-      (p) => {
+      async (p) => {
         setCoords({ lat: p.coords.latitude, lng: p.coords.longitude });
         setError(null);
+        try {
+          await recordLocation({ data: { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy } });
+          toast.success("Location shared");
+        } catch (e) {
+          toast.error(e instanceof Error ? e.message : "Failed to save location");
+        }
       },
       (err) => setError(err.message),
       { enableHighAccuracy: true, timeout: 10000 },

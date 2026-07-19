@@ -4,12 +4,23 @@ import { BarChart3, LineChart, Link2, PiggyBank } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
+import { useQuery } from "@tanstack/react-query";
+import { listMyTransactions } from "@/lib/api.functions";
 
 export const Route = createFileRoute("/app/income")({
   component: IncomePage,
 });
 
 function IncomePage() {
+  const { data: txns = [] } = useQuery({ queryKey: ["txns"], queryFn: () => listMyTransactions() });
+  const now = new Date();
+  const startOfWeek = new Date(now); startOfWeek.setDate(now.getDate() - now.getDay());
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const startOfYear = new Date(now.getFullYear(), 0, 1);
+  const sum = (from: Date) => txns.filter((t) => t.type === "income" && new Date(t.occurred_on) >= from).reduce((a, t) => a + Number(t.amount), 0);
+  const fmt = (n: number) => n === 0 ? "—" : `₹${n.toLocaleString("en-IN")}`;
+  const week = sum(startOfWeek), month = sum(startOfMonth), year = sum(startOfYear);
+  const sources = new Set(txns.filter((t) => t.type === "income").map((t) => t.source ?? "")).size;
   return (
     <div className="space-y-6">
       <PageHeader
@@ -20,10 +31,10 @@ function IncomePage() {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[
-          { l: "This week", v: "—", i: LineChart },
-          { l: "This month", v: "—", i: BarChart3 },
-          { l: "This year", v: "—", i: PiggyBank },
-          { l: "Sources connected", v: "0", i: Link2 },
+          { l: "This week", v: fmt(week), i: LineChart },
+          { l: "This month", v: fmt(month), i: BarChart3 },
+          { l: "This year", v: fmt(year), i: PiggyBank },
+          { l: "Sources connected", v: String(sources), i: Link2 },
         ].map((s) => (
           <div key={s.l} className="rounded-2xl border bg-card p-5 shadow-sm">
             <div className="flex items-center justify-between text-muted-foreground">
