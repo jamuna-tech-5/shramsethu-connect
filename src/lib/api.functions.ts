@@ -26,7 +26,7 @@ export const updateMyProfile = createServerFn({ method: "POST" })
     ];
     for (const k of keys) if (k in data) patch[k] = data[k];
     if (Object.keys(patch).length === 0) return { ok: true };
-    const { error } = await supabase.from("profiles").update(patch).eq("id", userId);
+    const { error } = await supabase.from("profiles").update(patch as never).eq("id", userId);
     if (error) throw new Error(error.message);
     return { ok: true };
   });
@@ -58,7 +58,7 @@ export const listMyDocuments = createServerFn({ method: "GET" })
 
 export const recordDocument = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((v: { kind: string; storage_path: string; file_name: string; mime_type: string; size_bytes: number }) => v)
+  .inputValidator((v: { kind: "aadhaar" | "pan" | "license" | "other"; storage_path: string; file_name: string; mime_type: string; size_bytes: number }) => v)
   .handler(async ({ data, context }) => {
     const { error } = await context.supabase.from("documents").insert({
       user_id: context.userId,
@@ -98,7 +98,7 @@ export const triggerSOS = createServerFn({ method: "POST" })
       lat: data.lat ?? null,
       lng: data.lng ?? null,
       message: data.message ?? null,
-      status: "triggered",
+      status: "active",
     });
     if (error) throw new Error(error.message);
     return { ok: true };
@@ -197,7 +197,7 @@ export const adminStats = createServerFn({ method: "GET" })
     const [workers, pending, sos, active] = await Promise.all([
       context.supabase.from("profiles").select("id", { count: "exact", head: true }),
       context.supabase.from("documents").select("id", { count: "exact", head: true }).eq("status", "pending"),
-      context.supabase.from("sos_events").select("id", { count: "exact", head: true }).eq("status", "triggered"),
+      context.supabase.from("sos_events").select("id", { count: "exact", head: true }).eq("status", "active"),
       context.supabase.from("profiles").select("id", { count: "exact", head: true }).in("status", ["online","on_duty","available"]),
     ]);
     return {
@@ -237,5 +237,12 @@ export const nearbyPlaces = createServerFn({ method: "POST" })
       throw new Error(`Google Maps error [${res.status}]: ${body.slice(0, 300)}`);
     }
     const json = (await res.json()) as { places?: Array<Record<string, unknown>> };
-    return json.places ?? [];
+    return (json.places ?? []) as unknown as Array<{
+      id?: string;
+      displayName?: { text?: string };
+      formattedAddress?: string;
+      location?: { latitude?: number; longitude?: number };
+      rating?: number;
+      userRatingCount?: number;
+    }>;
   });
