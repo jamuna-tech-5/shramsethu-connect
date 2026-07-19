@@ -9,10 +9,14 @@ export const Route = createFileRoute("/app")({
 });
 
 function AppLayout() {
-  const { isAuthed } = useStore();
+  const { isAuthed, loading } = useStore();
   const navigate = useNavigate();
   useEffect(() => {
-    if (!isAuthed) navigate({ to: "/auth" });
-  }, [isAuthed, navigate]);
+    if (!loading && !isAuthed) navigate({ to: "/auth" });
+  }, [isAuthed, loading, navigate]);
+  if (loading) {
+    return <div className="grid min-h-dvh place-items-center text-sm text-muted-foreground">Loading…</div>;
+  }
+  if (!isAuthed) return null;
   return <AppShell />;
 }

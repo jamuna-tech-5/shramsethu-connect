@@ -1,7 +1,7 @@
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import { ArrowRight, Eye, EyeOff, Lock, Mail, Phone, User as UserIcon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 
@@ -35,8 +35,16 @@ function AuthPage() {
   const [show, setShow] = useState(false);
   const [form, setForm] = useState({ fullName: "", email: "", phone: "", password: "", confirm: "" });
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const { signUp, signIn } = useStore();
+  const [submitting, setSubmitting] = useState(false);
+  const { signUp, signIn, signInWithGoogle, isAuthed, profile } = useStore();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (isAuthed) {
+      if (profile && !profile.onboarded) navigate({ to: "/onboarding" });
+      else navigate({ to: "/app" });
+    }
+  }, [isAuthed, profile, navigate]);
 
   const strength = useMemo(() => passwordStrength(form.password), [form.password]);
   const strengthLabel = ["Too weak", "Weak", "Okay", "Strong", "Excellent"][strength];
@@ -55,21 +63,35 @@ function AuthPage() {
     return Object.keys(e).length === 0;
   };
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
+    setSubmitting(true);
     if (mode === "signup") {
-      signUp({ fullName: form.fullName, email: form.email, phone: form.phone, password: form.password });
-      toast.success("Welcome to ShramSethu. Start building your digital work identity.");
-      navigate({ to: "/onboarding" });
+      const res = await signUp({ fullName: form.fullName, email: form.email, phone: form.phone, password: form.password });
+      setSubmitting(false);
+      if (!res.ok) {
+        toast.error(res.error ?? "Sign up failed");
+        return;
+      }
+      toast.success("Account created. Check your email if confirmation is required.");
+      // Onboarding redirect handled by useEffect when session hydrates
     } else {
-      const ok = signIn(form.email, form.password);
+      const ok = await signIn(form.email, form.password);
+      setSubmitting(false);
       if (!ok) {
-        toast.error("No account found for this email. Please sign up.");
+        toast.error("Invalid email or password.");
         return;
       }
       toast.success("Signed in");
-      navigate({ to: "/app" });
+    }
+  };
+
+  const google = async () => {
+    try {
+      await signInWithGoogle();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Google sign-in failed");
     }
   };
 
@@ -230,7 +252,16 @@ function AuthPage() {
             )}
 
             <Button type="submit" size="lg" className="w-full rounded-xl gradient-primary text-white shadow-soft">
-              {mode === "signup" ? "Create account" : "Sign in"} <ArrowRight className="ml-1.5 h-4 w-4" />
+              {submitting ? "Please wait…" : mode === "signup" ? "Create account" : "Sign in"} <ArrowRight className="ml-1.5 h-4 w-4" />
+            </Button>
+
+            <div className="relative my-2">
+              <div className="absolute inset-0 flex items-center"><div className="w-full border-t" /></div>
+              <div className="relative flex justify-center text-[11px] uppercase tracking-wider"><span className="bg-background px-2 text-muted-foreground">or</span></div>
+            </div>
+            <Button type="button" variant="outline" size="lg" className="w-full rounded-xl" onClick={google}>
+              <svg viewBox="0 0 24 24" className="mr-2 h-4 w-4" aria-hidden="true"><path fill="#EA4335" d="M12 10.2v3.9h5.5c-.24 1.4-1.66 4.1-5.5 4.1-3.31 0-6-2.73-6-6.1s2.69-6.1 6-6.1c1.88 0 3.14.8 3.86 1.48l2.63-2.53C16.86 3.4 14.65 2.4 12 2.4 6.79 2.4 2.6 6.6 2.6 12s4.19 9.6 9.4 9.6c5.42 0 9-3.8 9-9.14 0-.61-.06-1.08-.14-1.55H12z"/></svg>
+              Continue with Google
             </Button>
 
             <p className="text-center text-xs text-muted-foreground">

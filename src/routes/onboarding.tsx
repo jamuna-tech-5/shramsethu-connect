@@ -33,7 +33,7 @@ const CATS: WorkCategory[] = [
 ];
 
 function Onboarding() {
-  const { profile, update } = useStore();
+  const { profile, update, isAuthed, loading } = useStore();
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [form, setForm] = useState({
@@ -50,8 +50,8 @@ function Onboarding() {
   });
 
   useEffect(() => {
-    if (!profile) navigate({ to: "/auth", search: { mode: "signup" } });
-  }, [profile, navigate]);
+    if (!loading && !isAuthed) navigate({ to: "/auth", search: { mode: "signup" } });
+  }, [isAuthed, loading, navigate]);
 
   const readFile = (file: File, cb: (dataUrl: string) => void) => {
     const reader = new FileReader();
@@ -59,8 +59,8 @@ function Onboarding() {
     reader.readAsDataURL(file);
   };
 
-  const finish = () => {
-    update({
+  const finish = async () => {
+    await update({
       category: (form.category || undefined) as WorkCategory | undefined,
       skills: form.skills,
       experience: form.experience,
