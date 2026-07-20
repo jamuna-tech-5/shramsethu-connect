@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useRef } from "react";
 
 type LatLng = { lat: number; lng: number };
@@ -5,7 +6,7 @@ export type MapMarker = { position: LatLng; title?: string; color?: string };
 
 declare global {
   interface Window {
-    google?: typeof google;
+    google?: any;
     __ssMapReady?: Promise<void>;
     __ssMapReadyResolve?: () => void;
   }
@@ -43,16 +44,17 @@ export function InteractiveMap({
   polyline?: string | null;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<google.maps.Map | null>(null);
-  const markerRef = useRef<google.maps.Marker[]>([]);
-  const polyRef = useRef<google.maps.Polyline | null>(null);
+  const mapRef = useRef<any>(null);
+  const markerRef = useRef<any[]>([]);
+  const polyRef = useRef<any>(null);
 
   useEffect(() => {
     let cancelled = false;
     loadMaps().then(() => {
       if (cancelled || !ref.current || !window.google?.maps) return;
+      const g = window.google;
       if (!mapRef.current) {
-        mapRef.current = new google.maps.Map(ref.current, {
+        mapRef.current = new g.maps.Map(ref.current, {
           center: center ?? { lat: 20.5937, lng: 78.9629 },
           zoom: center ? zoom : 5,
           disableDefaultUI: true,
@@ -66,21 +68,21 @@ export function InteractiveMap({
         mapRef.current.setZoom(zoom);
       }
       // Markers
-      markerRef.current.forEach((m) => m.setMap(null));
+      markerRef.current.forEach((m: any) => m.setMap(null));
       markerRef.current = markers.map((m) =>
-        new google.maps.Marker({
-          position: m.position, map: mapRef.current!, title: m.title,
+        new g.maps.Marker({
+          position: m.position, map: mapRef.current, title: m.title,
           icon: m.color ? {
-            path: google.maps.SymbolPath.CIRCLE, scale: 8,
+            path: g.maps.SymbolPath.CIRCLE, scale: 8,
             fillColor: m.color, fillOpacity: 1, strokeColor: "#fff", strokeWeight: 2,
           } : undefined,
         }),
       );
       // Polyline (encoded)
       if (polyRef.current) polyRef.current.setMap(null);
-      if (polyline && google.maps.geometry?.encoding) {
-        const path = google.maps.geometry.encoding.decodePath(polyline);
-        polyRef.current = new google.maps.Polyline({
+      if (polyline && g.maps.geometry?.encoding) {
+        const path = g.maps.geometry.encoding.decodePath(polyline);
+        polyRef.current = new g.maps.Polyline({
           path, map: mapRef.current, strokeColor: "#4F46E5", strokeWeight: 5, strokeOpacity: 0.85,
         });
       }
