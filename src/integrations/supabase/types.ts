@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      admin_actions: {
+        Row: {
+          action: string
+          actor_id: string
+          created_at: string
+          id: string
+          note: string | null
+          target_document_id: string | null
+          target_user_id: string | null
+        }
+        Insert: {
+          action: string
+          actor_id: string
+          created_at?: string
+          id?: string
+          note?: string | null
+          target_document_id?: string | null
+          target_user_id?: string | null
+        }
+        Update: {
+          action?: string
+          actor_id?: string
+          created_at?: string
+          id?: string
+          note?: string | null
+          target_document_id?: string | null
+          target_user_id?: string | null
+        }
+        Relationships: []
+      }
       documents: {
         Row: {
           created_at: string
@@ -115,6 +145,36 @@ export type Database = {
           computed_at?: string
           id?: string
           score?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
+      income_sources: {
+        Row: {
+          created_at: string
+          external_ref: string | null
+          id: string
+          kind: string
+          name: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          external_ref?: string | null
+          id?: string
+          kind: string
+          name: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          external_ref?: string | null
+          id?: string
+          kind?: string
+          name?: string
+          updated_at?: string
           user_id?: string
         }
         Relationships: []
@@ -236,6 +296,48 @@ export type Database = {
         }
         Relationships: []
       }
+      location_shares: {
+        Row: {
+          active: boolean
+          ended_at: string | null
+          id: string
+          latest_lat: number | null
+          latest_lng: number | null
+          message: string | null
+          mode: string
+          recipient_id: string
+          sender_id: string
+          started_at: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          ended_at?: string | null
+          id?: string
+          latest_lat?: number | null
+          latest_lng?: number | null
+          message?: string | null
+          mode: string
+          recipient_id: string
+          sender_id: string
+          started_at?: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          ended_at?: string | null
+          id?: string
+          latest_lat?: number | null
+          latest_lng?: number | null
+          message?: string | null
+          mode?: string
+          recipient_id?: string
+          sender_id?: string
+          started_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       notifications: {
         Row: {
           body: string | null
@@ -268,6 +370,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          blocked: boolean
           category: Database["public"]["Enums"]["work_category"] | null
           created_at: string
           email: string | null
@@ -288,6 +391,7 @@ export type Database = {
           work_type: string | null
         }
         Insert: {
+          blocked?: boolean
           category?: Database["public"]["Enums"]["work_category"] | null
           created_at?: string
           email?: string | null
@@ -308,6 +412,7 @@ export type Database = {
           work_type?: string | null
         }
         Update: {
+          blocked?: boolean
           category?: Database["public"]["Enums"]["work_category"] | null
           created_at?: string
           email?: string | null
@@ -630,6 +735,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      admin_review_document: {
+        Args: { _decision: string; _doc_id: string; _note?: string }
+        Returns: undefined
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -637,6 +746,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      recompute_gigscore: { Args: { _user_id: string }; Returns: number }
     }
     Enums: {
       app_role: "admin" | "moderator" | "user"
@@ -646,7 +756,7 @@ export type Database = {
         | "under_review"
         | "approved"
         | "rejected"
-      doc_kind: "aadhaar" | "pan" | "license" | "other"
+      doc_kind: "aadhaar" | "pan" | "license" | "other" | "bank" | "identity"
       doc_status: "not_uploaded" | "pending" | "verified" | "rejected"
       notif_kind: "info" | "success" | "warning" | "alert"
       sos_status: "active" | "resolved" | "cancelled"
@@ -794,7 +904,7 @@ export const Constants = {
         "approved",
         "rejected",
       ],
-      doc_kind: ["aadhaar", "pan", "license", "other"],
+      doc_kind: ["aadhaar", "pan", "license", "other", "bank", "identity"],
       doc_status: ["not_uploaded", "pending", "verified", "rejected"],
       notif_kind: ["info", "success", "warning", "alert"],
       sos_status: ["active", "resolved", "cancelled"],
