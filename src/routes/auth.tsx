@@ -74,8 +74,11 @@ function AuthPage() {
         toast.error(res.error ?? "Sign up failed");
         return;
       }
-      toast.success("Account created. Check your email if confirmation is required.");
-      // Onboarding redirect handled by useEffect when session hydrates
+      toast.success("Account created. Signing you in…");
+      // If session wasn't auto-established (rare), sign in explicitly.
+      const ok = await signIn(form.email, form.password);
+      if (!ok) toast.error("Signed up, but auto sign-in failed. Please sign in.");
+      // Redirect handled by useEffect when session hydrates
     } else {
       const ok = await signIn(form.email, form.password);
       setSubmitting(false);
