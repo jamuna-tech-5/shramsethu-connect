@@ -285,7 +285,7 @@ export const adminReviewDocument = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
     const { error } = await context.supabase.rpc("admin_review_document", {
-      _doc_id: data.docId, _decision: data.decision, _note: data.note ?? null,
+      _doc_id: data.docId, _decision: data.decision, _note: data.note,
     });
     if (error) throw new Error(error.message);
     return { ok: true };
