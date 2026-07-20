@@ -209,7 +209,8 @@ export const adminStats = createServerFn({ method: "GET" })
   });
 
 // ---------- Admin: workers & documents ----------
-async function assertAdmin(ctx: { supabase: ReturnType<typeof requireSupabaseAuth> extends never ? never : any; userId: string }) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function assertAdmin(ctx: { supabase: any; userId: string }) {
   const { data } = await ctx.supabase.rpc("has_role", { _user_id: ctx.userId, _role: "admin" });
   if (!data) throw new Error("Forbidden");
 }
@@ -317,7 +318,7 @@ export const addIncomeSource = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     if (!data.name?.trim()) throw new Error("Name required");
     const { error } = await context.supabase.from("income_sources").insert({
-      user_id: context.userId, kind: data.kind, name: data.name.trim(), external_ref: data.external_ref ?? null,
+      user_id: context.userId, kind: data.kind, name: data.name.trim(), external_ref: data.external_ref,
     });
     if (error) throw new Error(error.message);
     return { ok: true };
