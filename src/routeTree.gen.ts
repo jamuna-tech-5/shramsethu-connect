@@ -25,6 +25,7 @@ import { Route as AppGigscoreRouteImport } from './routes/app.gigscore'
 import { Route as AppDocumentsRouteImport } from './routes/app.documents'
 import { Route as AppChargingRouteImport } from './routes/app.charging'
 import { Route as AppAdminRouteImport } from './routes/app.admin'
+import { Route as AdminLoginRouteImport } from './routes/admin.login'
 
 const OnboardingRoute = OnboardingRouteImport.update({
   id: '/onboarding',
@@ -106,12 +107,18 @@ const AppAdminRoute = AppAdminRouteImport.update({
   path: '/admin',
   getParentRoute: () => AppRoute,
 } as any)
+const AdminLoginRoute = AdminLoginRouteImport.update({
+  id: '/admin/login',
+  path: '/admin/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRouteWithChildren
   '/auth': typeof AuthRoute
   '/onboarding': typeof OnboardingRoute
+  '/admin/login': typeof AdminLoginRoute
   '/app/admin': typeof AppAdminRoute
   '/app/charging': typeof AppChargingRoute
   '/app/documents': typeof AppDocumentsRoute
@@ -129,6 +136,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/onboarding': typeof OnboardingRoute
+  '/admin/login': typeof AdminLoginRoute
   '/app/admin': typeof AppAdminRoute
   '/app/charging': typeof AppChargingRoute
   '/app/documents': typeof AppDocumentsRoute
@@ -148,6 +156,7 @@ export interface FileRoutesById {
   '/app': typeof AppRouteWithChildren
   '/auth': typeof AuthRoute
   '/onboarding': typeof OnboardingRoute
+  '/admin/login': typeof AdminLoginRoute
   '/app/admin': typeof AppAdminRoute
   '/app/charging': typeof AppChargingRoute
   '/app/documents': typeof AppDocumentsRoute
@@ -168,6 +177,7 @@ export interface FileRouteTypes {
     | '/app'
     | '/auth'
     | '/onboarding'
+    | '/admin/login'
     | '/app/admin'
     | '/app/charging'
     | '/app/documents'
@@ -185,6 +195,7 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/onboarding'
+    | '/admin/login'
     | '/app/admin'
     | '/app/charging'
     | '/app/documents'
@@ -203,6 +214,7 @@ export interface FileRouteTypes {
     | '/app'
     | '/auth'
     | '/onboarding'
+    | '/admin/login'
     | '/app/admin'
     | '/app/charging'
     | '/app/documents'
@@ -222,6 +234,7 @@ export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   AuthRoute: typeof AuthRoute
   OnboardingRoute: typeof OnboardingRoute
+  AdminLoginRoute: typeof AdminLoginRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -338,6 +351,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAdminRouteImport
       parentRoute: typeof AppRoute
     }
+    '/admin/login': {
+      id: '/admin/login'
+      path: '/admin/login'
+      fullPath: '/admin/login'
+      preLoaderRoute: typeof AdminLoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -378,17 +398,8 @@ const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   AuthRoute: AuthRoute,
   OnboardingRoute: OnboardingRoute,
+  AdminLoginRoute: AdminLoginRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

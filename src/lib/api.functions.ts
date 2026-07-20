@@ -208,6 +208,243 @@ export const adminStats = createServerFn({ method: "GET" })
     };
   });
 
+// ---------- Admin: workers & documents ----------
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function assertAdmin(ctx: { supabase: any; userId: string }) {
+  const { data } = await ctx.supabase.rpc("has_role", { _user_id: ctx.userId, _role: "admin" });
+  if (!data) throw new Error("Forbidden");
+}
+
+export const adminListWorkers = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((v: { search?: string; onlyBlocked?: boolean } | undefined) => v ?? {})
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    let q = context.supabase.from("profiles").select("id, full_name, email, phone, category, status, blocked, photo_url, onboarded, created_at").order("created_at", { ascending: false });
+    if (data.search) {
+      const s = `%${data.search}%`;
+      q = q.or(`full_name.ilike.${s},email.ilike.${s},phone.ilike.${s}`);
+    }
+    if (data.onlyBlocked) q = q.eq("blocked", true);
+    const { data: rows, error } = await q.limit(200);
+    if (error) throw new Error(error.message);
+    return rows ?? [];
+  });
+
+export const adminGetWorker = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((v: { id: string }) => v)
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const [{ data: p }, { data: docs }, { data: gs }, { data: txns }] = await Promise.all([
+      context.supabase.from("profiles").select("*").eq("id", data.id).maybeSingle(),
+      context.supabase.from("documents").select("*").eq("user_id", data.id).order("created_at", { ascending: false }),
+      context.supabase.from("gigscore_snapshots").select("score, breakdown, computed_at").eq("user_id", data.id).order("computed_at", { ascending: false }).limit(1).maybeSingle(),
+      context.supabase.from("transactions").select("id, type, amount, occurred_on, source").eq("user_id", data.id).order("occurred_on", { ascending: false }).limit(50),
+    ]);
+    return { profile: p, documents: docs ?? [], gigscore: gs, transactions: txns ?? [] };
+  });
+
+export const adminSetBlocked = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((v: { id: string; blocked: boolean }) => v)
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { error } = await context.supabase.from("profiles").update({ blocked: data.blocked } as never).eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const adminListPendingDocs = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context);
+    const { data, error } = await context.supabase
+      .from("documents")
+      .select("id, user_id, kind, status, file_name, storage_path, mime_type, created_at, profiles:user_id(full_name, email, phone)")
+      .eq("status", "pending")
+      .order("created_at", { ascending: false })
+      .limit(100);
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  });
+
+export const adminSignedUrl = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((v: { path: string }) => v)
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { data: url, error } = await context.supabase.storage.from("documents").createSignedUrl(data.path, 60 * 10);
+    if (error) throw new Error(error.message);
+    return { url: url.signedUrl };
+  });
+
+export const adminReviewDocument = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((v: { docId: string; decision: "verified" | "rejected"; note?: string }) => v)
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { error } = await context.supabase.rpc("admin_review_document", {
+      _doc_id: data.docId, _decision: data.decision, _note: data.note,
+    });
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const adminDeleteWorker = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((v: { id: string }) => v)
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    // Cascades to related tables via FK ON DELETE CASCADE where set.
+    const { error } = await context.supabase.from("profiles").delete().eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+// ---------- Income sources & records ----------
+export const listIncomeSources = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { data, error } = await context.supabase
+      .from("income_sources").select("*").eq("user_id", context.userId).order("created_at", { ascending: false });
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  });
+
+export const addIncomeSource = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((v: { kind: "gig_platform" | "employer" | "bank" | "other"; name: string; external_ref?: string }) => v)
+  .handler(async ({ data, context }) => {
+    if (!data.name?.trim()) throw new Error("Name required");
+    const { error } = await context.supabase.from("income_sources").insert({
+      user_id: context.userId, kind: data.kind, name: data.name.trim(), external_ref: data.external_ref,
+    });
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const addIncomeRecord = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((v: { amount: number; source?: string; occurred_on?: string; note?: string }) => v)
+  .handler(async ({ data, context }) => {
+    if (!(data.amount > 0)) throw new Error("Amount must be positive");
+    const { error } = await context.supabase.from("transactions").insert({
+      user_id: context.userId, type: "income", amount: data.amount,
+      source: data.source ?? null, occurred_on: data.occurred_on ?? new Date().toISOString().slice(0, 10),
+      note: data.note ?? null,
+    });
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+// ---------- User directory (for location sharing) ----------
+export const searchWorkers = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((v: { q: string }) => v)
+  .handler(async ({ data, context }) => {
+    const query = data.q?.trim();
+    if (!query || query.length < 2) return [];
+    const s = `%${query}%`;
+    const { data: rows, error } = await context.supabase
+      .from("profiles")
+      .select("id, full_name, photo_url, status, category")
+      .or(`full_name.ilike.${s},email.ilike.${s},phone.ilike.${s}`)
+      .neq("id", context.userId)
+      .limit(20);
+    if (error) throw new Error(error.message);
+    return rows ?? [];
+  });
+
+// ---------- Location shares ----------
+export const startLocationShare = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((v: { recipientIds: string[]; mode: "current" | "live"; lat: number; lng: number; message?: string }) => v)
+  .handler(async ({ data, context }) => {
+    if (!data.recipientIds?.length) throw new Error("Choose at least one recipient");
+    const rows = data.recipientIds.map((rid) => ({
+      sender_id: context.userId, recipient_id: rid, mode: data.mode,
+      latest_lat: data.lat, latest_lng: data.lng, message: data.message ?? null, active: true,
+    }));
+    const { data: inserted, error } = await context.supabase.from("location_shares").insert(rows).select("id, recipient_id");
+    if (error) throw new Error(error.message);
+    const notes = (inserted ?? []).map((r: { recipient_id: string }) => ({
+      user_id: r.recipient_id, kind: "info" as const,
+      title: "Location shared with you", body: data.mode === "live" ? "Live location sharing started." : "A location was shared with you.",
+    }));
+    if (notes.length) await context.supabase.from("notifications").insert(notes);
+    return { ok: true, count: inserted?.length ?? 0 };
+  });
+
+export const updateLiveShare = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((v: { lat: number; lng: number }) => v)
+  .handler(async ({ data, context }) => {
+    const { error } = await context.supabase
+      .from("location_shares")
+      .update({ latest_lat: data.lat, latest_lng: data.lng } as never)
+      .eq("sender_id", context.userId).eq("active", true).eq("mode", "live");
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const stopLocationShare = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((v: { id?: string; all?: boolean }) => v)
+  .handler(async ({ data, context }) => {
+    let q = context.supabase.from("location_shares").update({ active: false, ended_at: new Date().toISOString() } as never).eq("sender_id", context.userId);
+    if (data.id) q = q.eq("id", data.id);
+    else if (data.all) q = q.eq("active", true);
+    const { error } = await q;
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const listMyShares = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const [outgoing, incoming] = await Promise.all([
+      context.supabase.from("location_shares").select("id, recipient_id, mode, latest_lat, latest_lng, active, started_at").eq("sender_id", context.userId).order("started_at", { ascending: false }).limit(20),
+      context.supabase.from("location_shares").select("id, sender_id, mode, latest_lat, latest_lng, active, started_at").eq("recipient_id", context.userId).eq("active", true).order("started_at", { ascending: false }).limit(20),
+    ]);
+    return { outgoing: outgoing.data ?? [], incoming: incoming.data ?? [] };
+  });
+
+// ---------- Maps: routes/directions ----------
+export const computeRoute = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((v: { origin: { lat: number; lng: number }; destination: { lat: number; lng: number } }) => v)
+  .handler(async ({ data }) => {
+    const LOVABLE_API_KEY = process.env.LOVABLE_API_KEY;
+    const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
+    if (!LOVABLE_API_KEY || !GOOGLE_MAPS_API_KEY) throw new Error("Google Maps not configured");
+    const res = await fetch("https://connector-gateway.lovable.dev/google_maps/routes/directions/v2:computeRoutes", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "X-Connection-Api-Key": GOOGLE_MAPS_API_KEY,
+        "Content-Type": "application/json",
+        "X-Goog-FieldMask": "routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline",
+      },
+      body: JSON.stringify({
+        origin: { location: { latLng: { latitude: data.origin.lat, longitude: data.origin.lng } } },
+        destination: { location: { latLng: { latitude: data.destination.lat, longitude: data.destination.lng } } },
+        travelMode: "DRIVE",
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`Routes error [${res.status}]: ${body.slice(0, 200)}`);
+    }
+    const json = (await res.json()) as { routes?: Array<{ duration?: string; distanceMeters?: number; polyline?: { encodedPolyline?: string } }> };
+    const r = json.routes?.[0];
+    return {
+      durationSeconds: r?.duration ? Number(String(r.duration).replace("s", "")) : null,
+      distanceMeters: r?.distanceMeters ?? null,
+      polyline: r?.polyline?.encodedPolyline ?? null,
+    };
+  });
+
 // ---------- Google Maps: nearby places via connector gateway ----------
 export const nearbyPlaces = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
