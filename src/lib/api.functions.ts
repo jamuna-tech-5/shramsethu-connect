@@ -110,7 +110,7 @@ export const listSchemes = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { data, error } = await context.supabase
       .from("schemes")
-      .select("id, code, name, authority, category, summary, benefits, eligibility")
+      .select("id, code, name, authority, category, summary, benefits, eligibility, url")
       .order("name");
     if (error) throw new Error(error.message);
     return data ?? [];
