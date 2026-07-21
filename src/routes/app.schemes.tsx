@@ -79,9 +79,15 @@ function SchemesPage() {
               <div className="mt-3 rounded-xl bg-muted/60 px-3 py-2 text-[11px] text-muted-foreground">
                 <span className="font-semibold text-foreground">Eligibility · </span>{s.eligibility ?? "See official notification"}
               </div>
-              <Button variant="ghost" size="sm" className="mt-3 rounded-full text-primary">
-                Learn more <ExternalLink className="ml-1 h-3 w-3" />
-              </Button>
+              {(s as { url?: string }).url ? (
+                <Button asChild variant="ghost" size="sm" className="mt-3 rounded-full text-primary">
+                  <a href={(s as { url?: string }).url ?? "#"} target="_blank" rel="noopener noreferrer">
+                    Learn more <ExternalLink className="ml-1 h-3 w-3" />
+                  </a>
+                </Button>
+              ) : (
+                <span className="mt-3 inline-block text-xs text-muted-foreground">Official link coming soon</span>
+              )}
             </div>
           ))}
         </div>
