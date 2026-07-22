@@ -88,6 +88,7 @@ export const getMyDocumentUrl = createServerFn({ method: "POST" })
       .from("documents").select("storage_path, user_id").eq("id", data.id).maybeSingle();
     if (error) throw new Error(error.message);
     if (!doc || doc.user_id !== context.userId) throw new Error("Not found");
+    if (!doc.storage_path) throw new Error("File missing");
     const { data: url, error: e2 } = await context.supabase.storage
       .from("documents").createSignedUrl(doc.storage_path, 60 * 10);
     if (e2) throw new Error(e2.message);
