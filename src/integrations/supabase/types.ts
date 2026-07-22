@@ -46,47 +46,65 @@ export type Database = {
       }
       documents: {
         Row: {
+          ai_verified_at: string | null
+          confidence_score: number | null
           created_at: string
+          document_name: string | null
           file_name: string | null
           id: string
           kind: Database["public"]["Enums"]["doc_kind"]
           mime_type: string | null
+          ocr_status: string
+          ocr_text: string | null
           rejection_reason: string | null
           size_bytes: number | null
           status: Database["public"]["Enums"]["doc_status"]
           storage_path: string | null
           updated_at: string
           user_id: string
+          verification_reason: string | null
           verified_at: string | null
           verified_by: string | null
         }
         Insert: {
+          ai_verified_at?: string | null
+          confidence_score?: number | null
           created_at?: string
+          document_name?: string | null
           file_name?: string | null
           id?: string
           kind: Database["public"]["Enums"]["doc_kind"]
           mime_type?: string | null
+          ocr_status?: string
+          ocr_text?: string | null
           rejection_reason?: string | null
           size_bytes?: number | null
           status?: Database["public"]["Enums"]["doc_status"]
           storage_path?: string | null
           updated_at?: string
           user_id: string
+          verification_reason?: string | null
           verified_at?: string | null
           verified_by?: string | null
         }
         Update: {
+          ai_verified_at?: string | null
+          confidence_score?: number | null
           created_at?: string
+          document_name?: string | null
           file_name?: string | null
           id?: string
           kind?: Database["public"]["Enums"]["doc_kind"]
           mime_type?: string | null
+          ocr_status?: string
+          ocr_text?: string | null
           rejection_reason?: string | null
           size_bytes?: number | null
           status?: Database["public"]["Enums"]["doc_status"]
           storage_path?: string | null
           updated_at?: string
           user_id?: string
+          verification_reason?: string | null
           verified_at?: string | null
           verified_by?: string | null
         }
@@ -756,8 +774,26 @@ export type Database = {
         | "under_review"
         | "approved"
         | "rejected"
-      doc_kind: "aadhaar" | "pan" | "license" | "other" | "bank" | "identity"
-      doc_status: "not_uploaded" | "pending" | "verified" | "rejected"
+      doc_kind:
+        | "aadhaar"
+        | "pan"
+        | "license"
+        | "other"
+        | "bank"
+        | "identity"
+        | "passport"
+        | "voter_id"
+        | "salary_slip"
+        | "bank_statement"
+        | "income_proof"
+        | "payment_receipt"
+        | "employment_letter"
+      doc_status:
+        | "not_uploaded"
+        | "pending"
+        | "verified"
+        | "rejected"
+        | "needs_review"
       notif_kind: "info" | "success" | "warning" | "alert"
       sos_status: "active" | "resolved" | "cancelled"
       txn_type: "income" | "expense"
@@ -904,8 +940,28 @@ export const Constants = {
         "approved",
         "rejected",
       ],
-      doc_kind: ["aadhaar", "pan", "license", "other", "bank", "identity"],
-      doc_status: ["not_uploaded", "pending", "verified", "rejected"],
+      doc_kind: [
+        "aadhaar",
+        "pan",
+        "license",
+        "other",
+        "bank",
+        "identity",
+        "passport",
+        "voter_id",
+        "salary_slip",
+        "bank_statement",
+        "income_proof",
+        "payment_receipt",
+        "employment_letter",
+      ],
+      doc_status: [
+        "not_uploaded",
+        "pending",
+        "verified",
+        "rejected",
+        "needs_review",
+      ],
       notif_kind: ["info", "success", "warning", "alert"],
       sos_status: ["active", "resolved", "cancelled"],
       txn_type: ["income", "expense"],

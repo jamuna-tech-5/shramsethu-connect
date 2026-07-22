@@ -44,12 +44,17 @@ export const updateMySettings = createServerFn({ method: "POST" })
   });
 
 // ---------- Documents ----------
+export type DocKind =
+  | "aadhaar" | "pan" | "license" | "passport" | "voter_id"
+  | "salary_slip" | "bank_statement" | "income_proof"
+  | "payment_receipt" | "employment_letter" | "bank" | "identity" | "other";
+
 export const listMyDocuments = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { data, error } = await context.supabase
       .from("documents")
-      .select("id, kind, status, file_name, created_at, verified_at")
+      .select("id, kind, status, file_name, document_name, storage_path, mime_type, size_bytes, ocr_status, confidence_score, verification_reason, rejection_reason, ai_verified_at, verified_at, created_at")
       .eq("user_id", context.userId)
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
@@ -58,19 +63,177 @@ export const listMyDocuments = createServerFn({ method: "GET" })
 
 export const recordDocument = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((v: { kind: "aadhaar" | "pan" | "license" | "other"; storage_path: string; file_name: string; mime_type: string; size_bytes: number }) => v)
+  .inputValidator((v: { kind: DocKind; document_name?: string; storage_path: string; file_name: string; mime_type: string; size_bytes: number }) => v)
   .handler(async ({ data, context }) => {
-    const { error } = await context.supabase.from("documents").insert({
+    const { data: row, error } = await context.supabase.from("documents").insert({
       user_id: context.userId,
       kind: data.kind,
+      document_name: data.document_name ?? data.file_name,
       storage_path: data.storage_path,
       file_name: data.file_name,
       mime_type: data.mime_type,
       size_bytes: data.size_bytes,
       status: "pending",
-    });
+      ocr_status: "queued",
+    }).select("id").single();
+    if (error) throw new Error(error.message);
+    return { ok: true, id: row.id as string };
+  });
+
+export const getMyDocumentUrl = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((v: { id: string }) => v)
+  .handler(async ({ data, context }) => {
+    const { data: doc, error } = await context.supabase
+      .from("documents").select("storage_path, user_id").eq("id", data.id).maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!doc || doc.user_id !== context.userId) throw new Error("Not found");
+    if (!doc.storage_path) throw new Error("File missing");
+    const { data: url, error: e2 } = await context.supabase.storage
+      .from("documents").createSignedUrl(doc.storage_path, 60 * 10);
+    if (e2) throw new Error(e2.message);
+    return { url: url.signedUrl };
+  });
+
+export const deleteMyDocument = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((v: { id: string }) => v)
+  .handler(async ({ data, context }) => {
+    const { data: doc } = await context.supabase
+      .from("documents").select("storage_path, user_id").eq("id", data.id).maybeSingle();
+    if (!doc || doc.user_id !== context.userId) throw new Error("Not found");
+    if (doc.storage_path) {
+      await context.supabase.storage.from("documents").remove([doc.storage_path]);
+    }
+    const { error } = await context.supabase.from("documents").delete().eq("id", data.id);
     if (error) throw new Error(error.message);
     return { ok: true };
+  });
+
+// ---------- AI OCR verification ----------
+const KIND_KEYWORDS: Record<string, string[]> = {
+  aadhaar: ["aadhaar", "aadhar", "uidai", "unique identification"],
+  pan: ["income tax", "permanent account number", "pan"],
+  license: ["driving licence", "driving license", "transport", "dl no"],
+  passport: ["passport", "republic of india", "type p"],
+  voter_id: ["election", "elector", "voter", "epic"],
+  salary_slip: ["salary", "payslip", "pay slip", "net pay", "gross pay"],
+  bank_statement: ["statement of account", "bank statement", "ifsc", "opening balance"],
+  income_proof: ["income certificate", "income proof"],
+  payment_receipt: ["receipt", "invoice", "paid", "amount received"],
+  employment_letter: ["offer letter", "appointment letter", "employment", "hereby appointed"],
+};
+
+export const analyzeDocument = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((v: { id: string }) => v)
+  .handler(async ({ data, context }) => {
+    const { supabase, userId } = context;
+    const { data: doc, error } = await supabase
+      .from("documents")
+      .select("id, user_id, kind, storage_path, mime_type, file_name")
+      .eq("id", data.id).maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!doc || doc.user_id !== userId) throw new Error("Not found");
+
+    await supabase.from("documents").update({ ocr_status: "running" } as never).eq("id", doc.id);
+
+    // Download the file from storage → base64 for the model
+    const { data: file, error: dlErr } = await supabase.storage.from("documents").download(doc.storage_path as string);
+    if (dlErr || !file) {
+      const reason = `Failed to read file: ${dlErr?.message ?? "unknown"}`;
+      await supabase.from("documents").update({ ocr_status: "failed", status: "rejected", verification_reason: reason, ai_verified_at: new Date().toISOString() } as never).eq("id", doc.id);
+      return { status: "rejected", confidence_score: 0, verification_reason: reason };
+    }
+    const buf = new Uint8Array(await file.arrayBuffer());
+    let binary = "";
+    for (let i = 0; i < buf.length; i++) binary += String.fromCharCode(buf[i]);
+    const b64 = typeof btoa !== "undefined" ? btoa(binary) : Buffer.from(buf).toString("base64");
+    const mime = (doc.mime_type as string) || "application/octet-stream";
+
+    const LOVABLE_API_KEY = process.env.LOVABLE_API_KEY;
+    if (!LOVABLE_API_KEY) throw new Error("AI not configured");
+
+    const prompt = `You are a document verification assistant. Analyse the provided ${String(doc.kind).replace(/_/g, " ")} document and return STRICT JSON with keys: {"extracted_text": string, "detected_type": string, "quality_ok": boolean, "issues": string[], "confidence": number (0-100), "status": "verified"|"needs_review"|"rejected", "reason": string}. Rules: verified only if readable, right document type, mandatory fields present, no blur/crop/rotation problems. needs_review if partially readable or missing some fields. rejected if unreadable, wrong document, corrupted, or blank. Respond with JSON only.`;
+
+    let aiJson: {
+      extracted_text?: string; detected_type?: string; quality_ok?: boolean;
+      issues?: string[]; confidence?: number; status?: string; reason?: string;
+    } = {};
+    let ocrText = "";
+    try {
+      const isImage = mime.startsWith("image/");
+      const content: Array<Record<string, unknown>> = [{ type: "text", text: prompt }];
+      if (isImage) {
+        content.push({ type: "image_url", image_url: { url: `data:${mime};base64,${b64}` } });
+      } else {
+        content.push({ type: "file", file: { filename: doc.file_name ?? "document", file_data: `data:${mime};base64,${b64}` } });
+      }
+      const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Lovable-API-Key": LOVABLE_API_KEY },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          messages: [{ role: "user", content }],
+          response_format: { type: "json_object" },
+        }),
+      });
+      if (!res.ok) {
+        const t = await res.text();
+        throw new Error(`AI error [${res.status}]: ${t.slice(0, 200)}`);
+      }
+      const j = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
+      const raw = j.choices?.[0]?.message?.content ?? "{}";
+      try { aiJson = JSON.parse(raw); } catch {
+        const m = raw.match(/\{[\s\S]*\}/);
+        aiJson = m ? JSON.parse(m[0]) : {};
+      }
+      ocrText = String(aiJson.extracted_text ?? "").slice(0, 15000);
+    } catch (e) {
+      const reason = e instanceof Error ? e.message : "OCR failed";
+      await supabase.from("documents").update({
+        ocr_status: "failed", status: "needs_review",
+        verification_reason: reason, ai_verified_at: new Date().toISOString(),
+      } as never).eq("id", doc.id);
+      return { status: "needs_review", confidence_score: 0, verification_reason: reason };
+    }
+
+    // Duplicate detection (same user, same kind, non-trivial OCR text match)
+    let duplicate = false;
+    if (ocrText && ocrText.length > 40) {
+      const snippet = ocrText.slice(0, 200).replace(/[%_]/g, " ");
+      const { data: dup } = await supabase
+        .from("documents")
+        .select("id")
+        .eq("user_id", userId).eq("kind", doc.kind)
+        .neq("id", doc.id)
+        .ilike("ocr_text", `%${snippet}%`)
+        .limit(1);
+      if (dup && dup.length) duplicate = true;
+    }
+
+    // Kind mismatch check via keywords when AI didn't already reject
+    const kw = KIND_KEYWORDS[String(doc.kind)] ?? [];
+    const kindMatch = kw.length === 0 || kw.some((k) => ocrText.toLowerCase().includes(k));
+
+    let confidence = Math.max(0, Math.min(100, Math.round(Number(aiJson.confidence ?? 0))));
+    let status: "verified" | "needs_review" | "rejected" =
+      aiJson.status === "verified" || aiJson.status === "needs_review" || aiJson.status === "rejected"
+        ? aiJson.status : "needs_review";
+    let reason = String(aiJson.reason ?? (aiJson.issues ?? []).join("; ") ?? "").slice(0, 500);
+
+    if (duplicate) { status = "rejected"; reason = "Duplicate upload detected"; confidence = Math.min(confidence, 30); }
+    else if (!kindMatch && status === "verified") { status = "needs_review"; reason = reason || "Detected document type does not match selected type"; }
+
+    await supabase.from("documents").update({
+      ocr_status: "done", status,
+      confidence_score: confidence,
+      verification_reason: reason || null,
+      ocr_text: ocrText || null,
+      ai_verified_at: new Date().toISOString(),
+    } as never).eq("id", doc.id);
+
+    return { status, confidence_score: confidence, verification_reason: reason };
   });
 
 // ---------- Location ----------
