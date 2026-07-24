@@ -13,7 +13,6 @@ import {
   MapPin,
   Menu,
   Settings,
-  Shield,
   Sparkles,
   User,
   Wallet,
@@ -43,7 +42,6 @@ const nav: NavItem[] = [
   { to: "/app/documents", label: "Documents", icon: FileCheck2 },
   { to: "/app/sos", label: "Emergency SOS", icon: LifeBuoy },
   { to: "/app/settings", label: "Settings", icon: Settings },
-  { to: "/app/admin", label: "Admin", icon: Shield },
 ];
 
 export function AppShell() {
