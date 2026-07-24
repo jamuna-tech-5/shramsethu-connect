@@ -1,6 +1,6 @@
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { motion } from "framer-motion";
-import { ArrowRight, Eye, EyeOff, Lock, Mail, Phone, User as UserIcon } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, HardHat, KeyRound, Lock, Mail, Phone, Shield, User as UserIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useStore } from "@/lib/store";
+import { adminUnlock } from "@/lib/admin.functions";
 
 const searchSchema = z.object({
   mode: z.enum(["signin", "signup"]).optional(),
@@ -31,20 +32,23 @@ function passwordStrength(pw: string) {
 
 function AuthPage() {
   const { mode: initialMode } = Route.useSearch();
+  const [role, setRole] = useState<"choose" | "worker" | "admin">("choose");
   const [mode, setMode] = useState<"signin" | "signup">(initialMode ?? "signin");
   const [show, setShow] = useState(false);
   const [form, setForm] = useState({ fullName: "", email: "", phone: "", password: "", confirm: "" });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [adminCode, setAdminCode] = useState("");
+  const [adminBusy, setAdminBusy] = useState(false);
   const { signUp, signIn, signInWithGoogle, isAuthed, profile } = useStore();
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (isAuthed) {
+    if (role === "worker" && isAuthed) {
       if (profile && !profile.onboarded) navigate({ to: "/onboarding" });
       else navigate({ to: "/app" });
     }
-  }, [isAuthed, profile, navigate]);
+  }, [isAuthed, profile, navigate, role]);
 
   const strength = useMemo(() => passwordStrength(form.password), [form.password]);
   const strengthLabel = ["Too weak", "Weak", "Okay", "Strong", "Excellent"][strength];
@@ -98,6 +102,28 @@ function AuthPage() {
     }
   };
 
+  const submitAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminCode.trim()) {
+      toast.error("Enter the secret admin access code.");
+      return;
+    }
+    setAdminBusy(true);
+    try {
+      const res = await adminUnlock({ data: { code: adminCode.trim() } });
+      if (!res.ok) {
+        toast.error("Invalid Secret Admin Access Code.");
+        return;
+      }
+      toast.success("Admin access granted");
+      navigate({ to: "/admin" });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Unable to verify code");
+    } finally {
+      setAdminBusy(false);
+    }
+  };
+
   return (
     <div className="grid min-h-dvh lg:grid-cols-2">
       {/* Left: brand panel */}
@@ -130,7 +156,84 @@ function AuthPage() {
           <div className="lg:hidden mb-6">
             <Logo size={34} withWordmark />
           </div>
-          <h1 className="text-2xl font-bold tracking-tight">
+
+          {role === "choose" && (
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">Who are you?</h1>
+              <p className="mt-1 text-sm text-muted-foreground">Choose how you want to continue.</p>
+              <div className="mt-6 grid gap-3">
+                <button
+                  type="button"
+                  onClick={() => setRole("worker")}
+                  className="group flex items-center gap-4 rounded-2xl border bg-card p-4 text-left shadow-sm transition hover:border-primary hover:shadow-soft"
+                >
+                  <div className="grid h-11 w-11 place-items-center rounded-xl gradient-primary text-white">
+                    <HardHat className="h-5 w-5" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-semibold">Worker</div>
+                    <div className="text-xs text-muted-foreground">Sign up or sign in to your worker account.</div>
+                  </div>
+                  <ArrowRight className="h-4 w-4 text-muted-foreground transition group-hover:text-foreground" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRole("admin")}
+                  className="group flex items-center gap-4 rounded-2xl border bg-card p-4 text-left shadow-sm transition hover:border-primary hover:shadow-soft"
+                >
+                  <div className="grid h-11 w-11 place-items-center rounded-xl bg-foreground text-white">
+                    <Shield className="h-5 w-5" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-semibold">Admin</div>
+                    <div className="text-xs text-muted-foreground">Restricted access — secret code required.</div>
+                  </div>
+                  <ArrowRight className="h-4 w-4 text-muted-foreground transition group-hover:text-foreground" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {role === "admin" && (
+            <div>
+              <button type="button" onClick={() => setRole("choose")} className="text-xs text-muted-foreground hover:text-foreground">
+                ← Back
+              </button>
+              <h1 className="mt-2 text-2xl font-bold tracking-tight">Admin access</h1>
+              <p className="mt-1 text-sm text-muted-foreground">Enter the secret admin access code to continue.</p>
+              <form onSubmit={submitAdmin} className="mt-6 space-y-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="adminCode">Secret Admin Access Code</Label>
+                  <div className="relative">
+                    <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      id="adminCode"
+                      type="password"
+                      className="pl-9"
+                      placeholder="Enter secret code"
+                      value={adminCode}
+                      onChange={(e) => setAdminCode(e.target.value)}
+                      autoComplete="off"
+                      autoFocus
+                    />
+                  </div>
+                </div>
+                <Button type="submit" size="lg" disabled={adminBusy} className="w-full rounded-xl gradient-primary text-white shadow-soft">
+                  {adminBusy ? "Verifying…" : "Unlock admin dashboard"} <ArrowRight className="ml-1.5 h-4 w-4" />
+                </Button>
+                <p className="text-center text-[11px] text-muted-foreground">
+                  This code is verified securely on the backend. Access is logged.
+                </p>
+              </form>
+            </div>
+          )}
+
+          {role === "worker" && (
+          <>
+          <button type="button" onClick={() => setRole("choose")} className="text-xs text-muted-foreground hover:text-foreground">
+            ← Back
+          </button>
+          <h1 className="mt-2 text-2xl font-bold tracking-tight">
             {mode === "signup" ? "Create your account" : "Welcome back"}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -271,6 +374,8 @@ function AuthPage() {
               By continuing you agree to ShramSethu's Terms and Privacy Policy.
             </p>
           </form>
+          </>
+          )}
         </motion.div>
       </div>
     </div>
