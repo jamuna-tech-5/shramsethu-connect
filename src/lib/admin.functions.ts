@@ -87,7 +87,7 @@ export const adminFetchAllWorkers = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
 
     const ids = (workers ?? []).map((w) => (w as WorkerRow).id);
-    if (ids.length === 0) return { workers: [] as Array<WorkerRow & { last_sign_in_at: string | null; documents: unknown[]; income: { count: number; total: number; last_at: string | null }; gigscore: number | null; docs_verified: number; docs_total: number }> };
+    if (ids.length === 0) return { workers: [] };
 
     const [docsRes, gigRes, txRes, authRes] = await Promise.all([
       supabaseAdmin
