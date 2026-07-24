@@ -110,11 +110,19 @@ export const adminFetchAllWorkers = createServerFn({ method: "POST" })
 
     if (docsRes.error) throw new Error(docsRes.error.message);
 
-    const docsByUser = new Map<string, unknown[]>();
+    type DocRow = {
+      id: string; user_id: string; kind: string; status: string;
+      file_name: string | null; document_name: string | null;
+      storage_path: string | null; mime_type: string | null; size_bytes: number | null;
+      ocr_status: string | null; confidence_score: number | null;
+      verification_reason: string | null; ai_verified_at: string | null;
+      verified_at: string | null; created_at: string;
+    };
+    const docsByUser = new Map<string, DocRow[]>();
     for (const d of docsRes.data ?? []) {
-      const uid = (d as { user_id: string }).user_id;
-      if (!docsByUser.has(uid)) docsByUser.set(uid, []);
-      docsByUser.get(uid)!.push(d);
+      const row = d as DocRow;
+      if (!docsByUser.has(row.user_id)) docsByUser.set(row.user_id, []);
+      docsByUser.get(row.user_id)!.push(row);
     }
     const gigByUser = new Map<string, number>();
     for (const g of gigRes.data ?? []) {
@@ -137,7 +145,7 @@ export const adminFetchAllWorkers = createServerFn({ method: "POST" })
 
     const result = (workers ?? []).map((w) => {
       const row = w as WorkerRow;
-      const docs = (docsByUser.get(row.id) ?? []) as Array<{ status: string }>;
+      const docs = docsByUser.get(row.id) ?? [];
       const docs_verified = docs.filter((d) => d.status === "verified").length;
       return {
         ...row,
