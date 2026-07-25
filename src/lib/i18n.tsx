@@ -1,4 +1,5 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { translateBatch } from "@/lib/translate.functions";
 
 export const LANGUAGES = [
   { code: "en", label: "English", native: "English" },
@@ -13,106 +14,6 @@ export const LANGUAGES = [
 
 export type LangCode = (typeof LANGUAGES)[number]["code"];
 
-// Core UI translations for supported Indian languages.
-const dictionaries: Record<LangCode, Record<string, string>> = {
-  en: {
-    dashboard: "Dashboard", profile: "Worker Profile", gigscore: "GigScore",
-    income: "Income Analytics", schemes: "Government Schemes", loan: "Loan Eligibility",
-    charging: "Nearby Services", location: "Live Location", documents: "Documents",
-    sos: "Emergency SOS", settings: "Settings", admin: "Admin",
-    welcome_back: "Welcome back", sign_out: "Sign out", search: "Search",
-    add_income: "Add income", this_week: "This week", this_month: "This month",
-    this_year: "This year", learn_more: "Learn more", approve: "Approve",
-    reject: "Reject", pending: "Pending", verified: "Verified",
-    share_location: "Share location", save: "Save", cancel: "Cancel",
-    language: "Language",
-  },
-  hi: {
-    dashboard: "डैशबोर्ड", profile: "कार्यकर्ता प्रोफ़ाइल", gigscore: "गिगस्कोर",
-    income: "आय विश्लेषण", schemes: "सरकारी योजनाएँ", loan: "ऋण पात्रता",
-    charging: "नज़दीकी सेवाएँ", location: "लाइव स्थान", documents: "दस्तावेज़",
-    sos: "आपातकालीन SOS", settings: "सेटिंग्स", admin: "व्यवस्थापक",
-    welcome_back: "वापस स्वागत है", sign_out: "साइन आउट", search: "खोजें",
-    add_income: "आय जोड़ें", this_week: "इस सप्ताह", this_month: "इस महीने",
-    this_year: "इस वर्ष", learn_more: "और जानें", approve: "स्वीकृत करें",
-    reject: "अस्वीकार करें", pending: "लंबित", verified: "सत्यापित",
-    share_location: "स्थान साझा करें", save: "सहेजें", cancel: "रद्द करें",
-    language: "भाषा",
-  },
-  kn: {
-    dashboard: "ಡ್ಯಾಶ್‌ಬೋರ್ಡ್", profile: "ಕಾರ್ಮಿಕ ಪ್ರೊಫೈಲ್", gigscore: "ಗಿಗ್‌ಸ್ಕೋರ್",
-    income: "ಆದಾಯ ವಿಶ್ಲೇಷಣೆ", schemes: "ಸರ್ಕಾರಿ ಯೋಜನೆಗಳು", loan: "ಸಾಲದ ಅರ್ಹತೆ",
-    charging: "ಸಮೀಪದ ಸೇವೆಗಳು", location: "ಲೈವ್ ಸ್ಥಳ", documents: "ದಾಖಲೆಗಳು",
-    sos: "ತುರ್ತು SOS", settings: "ಸೆಟ್ಟಿಂಗ್‌ಗಳು", admin: "ನಿರ್ವಾಹಕ",
-    welcome_back: "ಮತ್ತೆ ಸ್ವಾಗತ", sign_out: "ಸೈನ್ ಔಟ್", search: "ಹುಡುಕಿ",
-    add_income: "ಆದಾಯ ಸೇರಿಸಿ", this_week: "ಈ ವಾರ", this_month: "ಈ ತಿಂಗಳು",
-    this_year: "ಈ ವರ್ಷ", learn_more: "ಇನ್ನಷ್ಟು", approve: "ಅನುಮೋದಿಸಿ",
-    reject: "ತಿರಸ್ಕರಿಸಿ", pending: "ಬಾಕಿ", verified: "ಪರಿಶೀಲಿಸಲಾಗಿದೆ",
-    share_location: "ಸ್ಥಳ ಹಂಚಿಕೊಳ್ಳಿ", save: "ಉಳಿಸಿ", cancel: "ರದ್ದುಮಾಡಿ",
-    language: "ಭಾಷೆ",
-  },
-  te: {
-    dashboard: "డాష్‌బోర్డ్", profile: "కార్మిక ప్రొఫైల్", gigscore: "గిగ్‌స్కోర్",
-    income: "ఆదాయ విశ్లేషణ", schemes: "ప్రభుత్వ పథకాలు", loan: "రుణ అర్హత",
-    charging: "సమీప సేవలు", location: "లైవ్ లొకేషన్", documents: "పత్రాలు",
-    sos: "అత్యవసర SOS", settings: "సెట్టింగ్‌లు", admin: "నిర్వాహకుడు",
-    welcome_back: "మళ్లీ స్వాగతం", sign_out: "సైన్ అవుట్", search: "వెతకండి",
-    add_income: "ఆదాయం జోడించండి", this_week: "ఈ వారం", this_month: "ఈ నెల",
-    this_year: "ఈ సంవత్సరం", learn_more: "మరింత తెలుసుకోండి", approve: "ఆమోదించండి",
-    reject: "తిరస్కరించండి", pending: "పెండింగ్", verified: "ధృవీకరించబడింది",
-    share_location: "లొకేషన్ షేర్ చేయండి", save: "సేవ్", cancel: "రద్దు",
-    language: "భాష",
-  },
-  ta: {
-    dashboard: "டாஷ்போர்டு", profile: "தொழிலாளர் சுயவிவரம்", gigscore: "கிக்ஸ்கோர்",
-    income: "வருமான பகுப்பாய்வு", schemes: "அரசு திட்டங்கள்", loan: "கடன் தகுதி",
-    charging: "அருகிலுள்ள சேவைகள்", location: "நேரடி இடம்", documents: "ஆவணங்கள்",
-    sos: "அவசர SOS", settings: "அமைப்புகள்", admin: "நிர்வாகி",
-    welcome_back: "மீண்டும் வரவேற்கிறோம்", sign_out: "வெளியேறு", search: "தேடு",
-    add_income: "வருமானம் சேர்க்க", this_week: "இந்த வாரம்", this_month: "இந்த மாதம்",
-    this_year: "இந்த ஆண்டு", learn_more: "மேலும் அறிய", approve: "ஒப்புதல்",
-    reject: "நிராகரி", pending: "நிலுவையில்", verified: "சரிபார்க்கப்பட்டது",
-    share_location: "இடத்தை பகிர்", save: "சேமி", cancel: "ரத்து",
-    language: "மொழி",
-  },
-  ml: {
-    dashboard: "ഡാഷ്‌ബോർഡ്", profile: "തൊഴിലാളി പ്രൊഫൈൽ", gigscore: "ഗിഗ്‌സ്കോർ",
-    income: "വരുമാന വിശകലനം", schemes: "സർക്കാർ പദ്ധതികൾ", loan: "വായ്പാ യോഗ്യത",
-    charging: "സമീപ സേവനങ്ങൾ", location: "ലൈവ് ലൊക്കേഷൻ", documents: "രേഖകൾ",
-    sos: "അടിയന്തര SOS", settings: "ക്രമീകരണങ്ങൾ", admin: "അഡ്മിൻ",
-    welcome_back: "വീണ്ടും സ്വാഗതം", sign_out: "സൈൻ ഔട്ട്", search: "തിരയുക",
-    add_income: "വരുമാനം ചേർക്കുക", this_week: "ഈ ആഴ്ച", this_month: "ഈ മാസം",
-    this_year: "ഈ വർഷം", learn_more: "കൂടുതൽ അറിയുക", approve: "അംഗീകരിക്കുക",
-    reject: "നിരസിക്കുക", pending: "തീർപ്പാകാത്ത", verified: "സ്ഥിരീകരിച്ചു",
-    share_location: "ലൊക്കേഷൻ പങ്കിടുക", save: "സേവ്", cancel: "റദ്ദാക്കുക",
-    language: "ഭാഷ",
-  },
-  mr: {
-    dashboard: "डॅशबोर्ड", profile: "कामगार प्रोफाइल", gigscore: "गिगस्कोर",
-    income: "उत्पन्न विश्लेषण", schemes: "सरकारी योजना", loan: "कर्ज पात्रता",
-    charging: "जवळील सेवा", location: "थेट स्थान", documents: "कागदपत्रे",
-    sos: "आपत्कालीन SOS", settings: "सेटिंग्ज", admin: "प्रशासक",
-    welcome_back: "पुन्हा स्वागत आहे", sign_out: "साइन आउट", search: "शोधा",
-    add_income: "उत्पन्न जोडा", this_week: "या आठवड्यात", this_month: "या महिन्यात",
-    this_year: "या वर्षी", learn_more: "अधिक जाणून घ्या", approve: "मंजूर करा",
-    reject: "नाकारा", pending: "प्रलंबित", verified: "सत्यापित",
-    share_location: "स्थान सामायिक करा", save: "जतन करा", cancel: "रद्द करा",
-    language: "भाषा",
-  },
-  bn: {
-    dashboard: "ড্যাশবোর্ড", profile: "কর্মী প্রোফাইল", gigscore: "গিগস্কোর",
-    income: "আয় বিশ্লেষণ", schemes: "সরকারি প্রকল্প", loan: "ঋণ যোগ্যতা",
-    charging: "কাছাকাছি পরিষেবা", location: "লাইভ অবস্থান", documents: "নথি",
-    sos: "জরুরি SOS", settings: "সেটিংস", admin: "প্রশাসক",
-    welcome_back: "আবার স্বাগতম", sign_out: "সাইন আউট", search: "অনুসন্ধান",
-    add_income: "আয় যোগ করুন", this_week: "এই সপ্তাহে", this_month: "এই মাসে",
-    this_year: "এই বছর", learn_more: "আরও জানুন", approve: "অনুমোদন",
-    reject: "প্রত্যাখ্যান", pending: "মুলতুবি", verified: "যাচাইকৃত",
-    share_location: "অবস্থান ভাগ করুন", save: "সংরক্ষণ", cancel: "বাতিল",
-    language: "ভাষা",
-  },
-};
-
 type Ctx = {
   lang: LangCode;
   setLang: (l: LangCode) => void;
@@ -122,29 +23,271 @@ type Ctx = {
 
 const I18nContext = createContext<Ctx | null>(null);
 
+const CACHE_PREFIX = "ss_tr_v1:";
+const ATTRS_TO_TRANSLATE = ["placeholder", "title", "aria-label", "alt"] as const;
+const SKIP_TAGS = new Set(["SCRIPT", "STYLE", "NOSCRIPT", "CODE", "PRE", "SVG", "PATH", "CANVAS", "TEXTAREA"]);
+const BATCH_SIZE = 40;
+
+function loadCache(lang: LangCode): Map<string, string> {
+  if (typeof window === "undefined") return new Map();
+  try {
+    const raw = window.localStorage.getItem(CACHE_PREFIX + lang);
+    if (!raw) return new Map();
+    return new Map(Object.entries(JSON.parse(raw) as Record<string, string>));
+  } catch {
+    return new Map();
+  }
+}
+function saveCache(lang: LangCode, cache: Map<string, string>) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(CACHE_PREFIX + lang, JSON.stringify(Object.fromEntries(cache)));
+  } catch { /* ignore quota */ }
+}
+
+function shouldTranslate(text: string) {
+  const trimmed = text.trim();
+  if (trimmed.length < 1) return false;
+  if (!/[A-Za-z]/.test(trimmed)) return false;
+  return true;
+}
+
+function isSkippableElement(el: Element | null): boolean {
+  let cur: Element | null = el;
+  while (cur) {
+    if (SKIP_TAGS.has(cur.tagName)) return true;
+    if (cur.hasAttribute && cur.hasAttribute("data-no-translate")) return true;
+    if (cur.getAttribute && cur.getAttribute("translate") === "no") return true;
+    cur = cur.parentElement;
+  }
+  return false;
+}
+
+type OriginalStore = {
+  text: WeakMap<Text, string>;
+  attr: WeakMap<Element, Record<string, string>>;
+};
+
+function collectNodes(root: Node, store: OriginalStore) {
+  const texts: Text[] = [];
+  const attrs: { el: Element; name: string }[] = [];
+  if (root.nodeType === 1 && isSkippableElement(root as Element)) return { texts, attrs };
+  if (root.nodeType === 3) {
+    const t = root as Text;
+    if (!isSkippableElement(t.parentElement) && shouldTranslate(t.nodeValue ?? "")) {
+      if (!store.text.has(t)) store.text.set(t, t.nodeValue ?? "");
+      texts.push(t);
+    }
+    return { texts, attrs };
+  }
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+  let node = walker.nextNode();
+  while (node) {
+    if (node.nodeType === 1) {
+      const el = node as Element;
+      if (!isSkippableElement(el)) {
+        for (const a of ATTRS_TO_TRANSLATE) {
+          const v = el.getAttribute(a);
+          if (v && shouldTranslate(v)) {
+            const cur = store.attr.get(el) ?? {};
+            if (!(a in cur)) cur[a] = v;
+            store.attr.set(el, cur);
+            attrs.push({ el, name: a });
+          }
+        }
+      }
+    } else if (node.nodeType === 3) {
+      const t = node as Text;
+      if (!isSkippableElement(t.parentElement) && shouldTranslate(t.nodeValue ?? "")) {
+        if (!store.text.has(t)) store.text.set(t, t.nodeValue ?? "");
+        texts.push(t);
+      }
+    }
+    node = walker.nextNode();
+  }
+  return { texts, attrs };
+}
+
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<LangCode>("en");
+  const cacheRef = useRef<Map<string, string>>(new Map());
+  const reverseRef = useRef<Set<string>>(new Set());
+  const storeRef = useRef<OriginalStore>({ text: new WeakMap(), attr: new WeakMap() });
+  const langRef = useRef<LangCode>("en");
+  const pendingRef = useRef<Set<string>>(new Set());
+  const scheduledRef = useRef<number | null>(null);
+  const observerRef = useRef<MutationObserver | null>(null);
 
-  useEffect(() => {
-    const stored = typeof window !== "undefined" ? localStorage.getItem("ss_lang") : null;
-    if (stored && LANGUAGES.some((l) => l.code === stored)) setLangState(stored as LangCode);
+  langRef.current = lang;
+
+  const rebuildReverse = useCallback(() => {
+    reverseRef.current = new Set(cacheRef.current.values());
   }, []);
 
-  const setLang = (l: LangCode) => {
+  const applyOnly = useCallback((texts: Text[], attrs: { el: Element; name: string }[]) => {
+    const cache = cacheRef.current;
+    const store = storeRef.current;
+    const currentLang = langRef.current;
+    const missing = new Set<string>();
+    for (const t of texts) {
+      const original = store.text.get(t) ?? t.nodeValue ?? "";
+      if (currentLang === "en") { if (t.nodeValue !== original) t.nodeValue = original; continue; }
+      const key = original.trim();
+      if (!key) continue;
+      const translated = cache.get(key);
+      if (translated) {
+        const leading = original.match(/^\s*/)?.[0] ?? "";
+        const trailing = original.match(/\s*$/)?.[0] ?? "";
+        const next = leading + translated + trailing;
+        if (t.nodeValue !== next) t.nodeValue = next;
+      } else {
+        missing.add(key);
+      }
+    }
+    for (const { el, name } of attrs) {
+      const originals = store.attr.get(el) ?? {};
+      const original = originals[name] ?? el.getAttribute(name) ?? "";
+      if (currentLang === "en") { if (el.getAttribute(name) !== original) el.setAttribute(name, original); continue; }
+      const key = original.trim();
+      if (!key) continue;
+      const translated = cache.get(key);
+      if (translated) {
+        if (el.getAttribute(name) !== translated) el.setAttribute(name, translated);
+      } else {
+        missing.add(key);
+      }
+    }
+    if (missing.size > 0 && currentLang !== "en") {
+      for (const m of missing) pendingRef.current.add(m);
+      scheduleFlush();
+    }
+  }, []);
+
+  const scheduleFlush = useCallback(() => {
+    if (scheduledRef.current != null) return;
+    scheduledRef.current = window.setTimeout(async () => {
+      scheduledRef.current = null;
+      const currentLang = langRef.current;
+      if (currentLang === "en" || pendingRef.current.size === 0) return;
+      const items = Array.from(pendingRef.current);
+      pendingRef.current.clear();
+      for (let i = 0; i < items.length; i += BATCH_SIZE) {
+        const batch = items.slice(i, i + BATCH_SIZE);
+        try {
+          const { translations } = await translateBatch({ data: { texts: batch, lang: currentLang } });
+          if (langRef.current !== currentLang) return;
+          const cache = cacheRef.current;
+          batch.forEach((src, idx) => {
+            const tr = translations[idx];
+            if (tr && typeof tr === "string") cache.set(src, tr);
+          });
+          saveCache(currentLang, cache);
+        } catch (e) {
+          console.warn("translateBatch failed", e);
+        }
+      }
+      rebuildReverse();
+      // Re-apply across whole document with new cache entries.
+      if (typeof document !== "undefined") {
+        const { texts, attrs } = collectNodes(document.body, storeRef.current);
+        applyOnly(texts, attrs);
+      }
+    }, 80);
+  }, [applyOnly, rebuildReverse]);
+
+  const retranslateAll = useCallback(() => {
+    if (typeof document === "undefined") return;
+    const { texts, attrs } = collectNodes(document.body, storeRef.current);
+    applyOnly(texts, attrs);
+  }, [applyOnly]);
+
+  // Boot: pick saved language from localStorage.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = localStorage.getItem("ss_lang");
+    if (stored && LANGUAGES.some((l) => l.code === stored) && stored !== "en") {
+      cacheRef.current = loadCache(stored as LangCode);
+      rebuildReverse();
+      setLangState(stored as LangCode);
+    }
+    const onLang = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { lang?: string } | undefined;
+      const code = detail?.lang;
+      if (code && LANGUAGES.some((l) => l.code === code)) {
+        setLangState((prev) => (prev === code ? prev : (code as LangCode)));
+      }
+    };
+    window.addEventListener("shramsethu:lang", onLang as EventListener);
+    return () => window.removeEventListener("shramsethu:lang", onLang as EventListener);
+  }, [rebuildReverse]);
+
+  // Whenever lang changes: load its cache, scan DOM, translate, observe mutations.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    cacheRef.current = lang === "en" ? new Map() : loadCache(lang);
+    rebuildReverse();
+    // set <html lang>
+    try { document.documentElement.setAttribute("lang", lang); } catch { /* ignore */ }
+    retranslateAll();
+
+    observerRef.current?.disconnect();
+    const observer = new MutationObserver((mutations) => {
+      const texts: Text[] = [];
+      const attrs: { el: Element; name: string }[] = [];
+      const seen = new Set<Node>();
+      for (const m of mutations) {
+        if (m.type === "characterData") {
+          const t = m.target as Text;
+          if (!t.parentElement || isSkippableElement(t.parentElement)) continue;
+          const currentText = t.nodeValue ?? "";
+          if (!shouldTranslate(currentText)) continue;
+          // If the mutation matches a known translation, ignore (it was us).
+          if (reverseRef.current.has(currentText.trim())) continue;
+          storeRef.current.text.set(t, currentText);
+          texts.push(t);
+        } else if (m.type === "attributes" && m.target.nodeType === 1) {
+          const el = m.target as Element;
+          const name = m.attributeName ?? "";
+          if (!(ATTRS_TO_TRANSLATE as readonly string[]).includes(name)) continue;
+          const v = el.getAttribute(name) ?? "";
+          if (!shouldTranslate(v)) continue;
+          if (reverseRef.current.has(v.trim())) continue;
+          const cur = storeRef.current.attr.get(el) ?? {};
+          cur[name] = v;
+          storeRef.current.attr.set(el, cur);
+          attrs.push({ el, name });
+        } else if (m.type === "childList") {
+          m.addedNodes.forEach((n) => {
+            if (seen.has(n)) return;
+            seen.add(n);
+            if (n.nodeType === 1 || n.nodeType === 3) {
+              const collected = collectNodes(n, storeRef.current);
+              texts.push(...collected.texts);
+              attrs.push(...collected.attrs);
+            }
+          });
+        }
+      }
+      if (texts.length || attrs.length) applyOnly(texts, attrs);
+    });
+    observer.observe(document.body, {
+      subtree: true, childList: true, characterData: true,
+      attributes: true, attributeFilter: ATTRS_TO_TRANSLATE as unknown as string[],
+    });
+    observerRef.current = observer;
+    return () => observer.disconnect();
+  }, [lang, retranslateAll, applyOnly, rebuildReverse]);
+
+  const setLang = useCallback((l: LangCode) => {
     setLangState(l);
     if (typeof window !== "undefined") localStorage.setItem("ss_lang", l);
-    // Fire-and-forget DB persistence when user is signed in.
     import("@/lib/api.functions").then(({ updateMySettings }) => {
       updateMySettings({ data: { language: l } }).catch(() => {});
     }).catch(() => {});
-  };
+  }, []);
 
-  const t = (key: string, fallback?: string) => {
-    const dict = dictionaries[lang] ?? {};
-    return dict[key] ?? dictionaries.en[key] ?? fallback ?? key;
-  };
-
-  const hasTranslations = (l: LangCode) => Object.keys(dictionaries[l] ?? {}).length > 0;
+  const t = (key: string, fallback?: string) => fallback ?? key;
+  const hasTranslations = (_l: LangCode) => true;
 
   return (
     <I18nContext.Provider value={{ lang, setLang, t, hasTranslations }}>{children}</I18nContext.Provider>
