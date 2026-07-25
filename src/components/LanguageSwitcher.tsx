@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { LANGUAGES, useI18n, type LangCode } from "@/lib/i18n";
 
 export function LanguageSwitcher({ compact = false }: { compact?: boolean }) {
-  const { lang, setLang, hasTranslations } = useI18n();
+  const { lang, setLang } = useI18n();
   const [q, setQ] = useState("");
   const filtered = LANGUAGES.filter(
     (l) =>
@@ -36,7 +36,6 @@ export function LanguageSwitcher({ compact = false }: { compact?: boolean }) {
       <div className="mt-3 grid max-h-72 grid-cols-1 gap-1.5 overflow-y-auto sm:grid-cols-2">
         {filtered.map((l) => {
           const active = lang === l.code;
-          hasTranslations(l.code as LangCode);
           return (
             <Button
               key={l.code}
@@ -45,7 +44,7 @@ export function LanguageSwitcher({ compact = false }: { compact?: boolean }) {
               onClick={() => setLang(l.code as LangCode)}
               className="justify-between rounded-xl"
             >
-              <span className="flex flex-col items-start">
+              <span className="flex flex-col items-start" data-no-translate>
                 <span className="text-sm font-semibold">{l.native}</span>
                 <span className="text-[11px] font-normal opacity-70">{l.label}</span>
               </span>
