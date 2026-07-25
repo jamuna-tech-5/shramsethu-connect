@@ -393,9 +393,22 @@ export const listMyTransactions = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { data, error } = await context.supabase
       .from("transactions")
-      .select("*")
+      .select("id, type, amount, source, occurred_on, note, verified, document_id, frequency, confidence_score, created_at")
       .eq("user_id", context.userId)
       .order("occurred_on", { ascending: false });
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  });
+
+export const listMyIncomeUploads = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { data, error } = await context.supabase
+      .from("documents")
+      .select("id, kind, status, file_name, document_name, storage_path, mime_type, ocr_status, confidence_score, verification_reason, ai_verified_at, created_at, income_source, income_frequency, extracted_amount, extracted_date, extracted_employer, extracted_txn_ref")
+      .eq("user_id", context.userId)
+      .eq("is_income_proof", true)
+      .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
     return data ?? [];
   });
