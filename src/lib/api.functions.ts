@@ -63,7 +63,12 @@ export const listMyDocuments = createServerFn({ method: "GET" })
 
 export const recordDocument = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((v: { kind: DocKind; document_name?: string; storage_path: string; file_name: string; mime_type: string; size_bytes: number }) => v)
+  .inputValidator((v: {
+    kind: DocKind; document_name?: string; storage_path: string;
+    file_name: string; mime_type: string; size_bytes: number;
+    income_source?: string; income_frequency?: "daily" | "weekly" | "monthly";
+    is_income_proof?: boolean;
+  }) => v)
   .handler(async ({ data, context }) => {
     const { data: row, error } = await context.supabase.from("documents").insert({
       user_id: context.userId,
@@ -75,6 +80,9 @@ export const recordDocument = createServerFn({ method: "POST" })
       size_bytes: data.size_bytes,
       status: "pending",
       ocr_status: "queued",
+      income_source: data.income_source ?? null,
+      income_frequency: data.income_frequency ?? null,
+      is_income_proof: !!data.is_income_proof,
     }).select("id").single();
     if (error) throw new Error(error.message);
     return { ok: true, id: row.id as string };
