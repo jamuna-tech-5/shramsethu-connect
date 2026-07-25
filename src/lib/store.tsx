@@ -74,6 +74,7 @@ type RawSettings = {
   notifications: boolean | null;
   dark_mode: boolean | null;
   location_sharing: boolean | null;
+  language?: string | null;
 } | null;
 
 function toProfile(raw: RawProfile | null, settings: RawSettings, isAdmin: boolean): Profile | null {
@@ -129,6 +130,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     try {
       const res = await getMyProfile();
       setProfile(toProfile(res.profile as RawProfile | null, res.settings as RawSettings, res.isAdmin));
+      const savedLang = (res.settings as RawSettings)?.language;
+      if (savedLang && typeof window !== "undefined") {
+        const local = window.localStorage.getItem("ss_lang");
+        if (local !== savedLang) {
+          window.localStorage.setItem("ss_lang", savedLang);
+          window.dispatchEvent(new CustomEvent("shramsethu:lang", { detail: { lang: savedLang } }));
+        }
+      }
     } catch (e) {
       console.error("loadProfile failed", e);
       setProfile(null);
