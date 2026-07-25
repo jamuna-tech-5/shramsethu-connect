@@ -50,8 +50,15 @@ export type Database = {
           confidence_score: number | null
           created_at: string
           document_name: string | null
+          extracted_amount: number | null
+          extracted_date: string | null
+          extracted_employer: string | null
+          extracted_txn_ref: string | null
           file_name: string | null
           id: string
+          income_frequency: string | null
+          income_source: string | null
+          is_income_proof: boolean
           kind: Database["public"]["Enums"]["doc_kind"]
           mime_type: string | null
           ocr_status: string
@@ -71,8 +78,15 @@ export type Database = {
           confidence_score?: number | null
           created_at?: string
           document_name?: string | null
+          extracted_amount?: number | null
+          extracted_date?: string | null
+          extracted_employer?: string | null
+          extracted_txn_ref?: string | null
           file_name?: string | null
           id?: string
+          income_frequency?: string | null
+          income_source?: string | null
+          is_income_proof?: boolean
           kind: Database["public"]["Enums"]["doc_kind"]
           mime_type?: string | null
           ocr_status?: string
@@ -92,8 +106,15 @@ export type Database = {
           confidence_score?: number | null
           created_at?: string
           document_name?: string | null
+          extracted_amount?: number | null
+          extracted_date?: string | null
+          extracted_employer?: string | null
+          extracted_txn_ref?: string | null
           file_name?: string | null
           id?: string
+          income_frequency?: string | null
+          income_source?: string | null
+          is_income_proof?: boolean
           kind?: Database["public"]["Enums"]["doc_kind"]
           mime_type?: string | null
           ocr_status?: string
@@ -611,7 +632,10 @@ export type Database = {
         Row: {
           amount: number
           category: string | null
+          confidence_score: number | null
           created_at: string
+          document_id: string | null
+          frequency: string | null
           id: string
           note: string | null
           occurred_on: string
@@ -619,11 +643,15 @@ export type Database = {
           type: Database["public"]["Enums"]["txn_type"]
           updated_at: string
           user_id: string
+          verified: boolean
         }
         Insert: {
           amount: number
           category?: string | null
+          confidence_score?: number | null
           created_at?: string
+          document_id?: string | null
+          frequency?: string | null
           id?: string
           note?: string | null
           occurred_on?: string
@@ -631,11 +659,15 @@ export type Database = {
           type: Database["public"]["Enums"]["txn_type"]
           updated_at?: string
           user_id: string
+          verified?: boolean
         }
         Update: {
           amount?: number
           category?: string | null
+          confidence_score?: number | null
           created_at?: string
+          document_id?: string | null
+          frequency?: string | null
           id?: string
           note?: string | null
           occurred_on?: string
@@ -643,8 +675,17 @@ export type Database = {
           type?: Database["public"]["Enums"]["txn_type"]
           updated_at?: string
           user_id?: string
+          verified?: boolean
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "transactions_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_roles: {
         Row: {
