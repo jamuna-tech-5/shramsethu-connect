@@ -139,7 +139,7 @@ export const analyzeDocument = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     const { data: doc, error } = await supabase
       .from("documents")
-      .select("id, user_id, kind, storage_path, mime_type, file_name")
+      .select("id, user_id, kind, storage_path, mime_type, file_name, is_income_proof, income_source, income_frequency")
       .eq("id", data.id).maybeSingle();
     if (error) throw new Error(error.message);
     if (!doc || doc.user_id !== userId) throw new Error("Not found");
@@ -162,11 +162,39 @@ export const analyzeDocument = createServerFn({ method: "POST" })
     const LOVABLE_API_KEY = process.env.LOVABLE_API_KEY;
     if (!LOVABLE_API_KEY) throw new Error("AI not configured");
 
-    const prompt = `You are a document verification assistant. Analyse the provided ${String(doc.kind).replace(/_/g, " ")} document and return STRICT JSON with keys: {"extracted_text": string, "detected_type": string, "quality_ok": boolean, "issues": string[], "confidence": number (0-100), "status": "verified"|"needs_review"|"rejected", "reason": string}. Rules: verified only if readable, right document type, mandatory fields present, no blur/crop/rotation problems. needs_review if partially readable or missing some fields. rejected if unreadable, wrong document, corrupted, or blank. Respond with JSON only.`;
+    const isIncome = !!doc.is_income_proof;
+    const prompt = isIncome
+      ? `You are an earnings-proof verification agent. The worker claims income from "${doc.income_source ?? "unknown"}" with a "${doc.income_frequency ?? "unknown"}" frequency. Analyse the uploaded document (${String(doc.kind).replace(/_/g, " ")}) and return STRICT JSON with keys:
+{"extracted_text": string,
+ "detected_type": string,
+ "quality_ok": boolean,
+ "issues": string[],
+ "confidence": number (0-100),
+ "status": "verified"|"needs_review"|"rejected",
+ "reason": string,
+ "amount": number|null,
+ "currency": string|null,
+ "payment_date": string|null,
+ "employer_or_platform": string|null,
+ "transaction_ref": string|null,
+ "frequency_detected": "daily"|"weekly"|"monthly"|null,
+ "source_matches_claim": boolean}
+Rules:
+- verified: readable, shows a real earnings/payment amount, and the platform/employer name plausibly matches the claim.
+- needs_review: partly readable, amount unclear, or the platform/employer does not clearly match the claim.
+- rejected: unreadable, blank, obviously fabricated, or clearly a different document type.
+- amount MUST be a plain number (no currency symbols, no commas). If multiple amounts appear, pick the net earnings / net pay / total received amount.
+- payment_date: ISO YYYY-MM-DD when possible.
+Respond with JSON only.`
+      : `You are a document verification assistant. Analyse the provided ${String(doc.kind).replace(/_/g, " ")} document and return STRICT JSON with keys: {"extracted_text": string, "detected_type": string, "quality_ok": boolean, "issues": string[], "confidence": number (0-100), "status": "verified"|"needs_review"|"rejected", "reason": string}. Rules: verified only if readable, right document type, mandatory fields present, no blur/crop/rotation problems. needs_review if partially readable or missing some fields. rejected if unreadable, wrong document, corrupted, or blank. Respond with JSON only.`;
 
     let aiJson: {
       extracted_text?: string; detected_type?: string; quality_ok?: boolean;
       issues?: string[]; confidence?: number; status?: string; reason?: string;
+      amount?: number | null; currency?: string | null; payment_date?: string | null;
+      employer_or_platform?: string | null; transaction_ref?: string | null;
+      frequency_detected?: "daily" | "weekly" | "monthly" | null;
+      source_matches_claim?: boolean;
     } = {};
     let ocrText = "";
     try {
@@ -233,13 +261,60 @@ export const analyzeDocument = createServerFn({ method: "POST" })
     if (duplicate) { status = "rejected"; reason = "Duplicate upload detected"; confidence = Math.min(confidence, 30); }
     else if (!kindMatch && status === "verified") { status = "needs_review"; reason = reason || "Detected document type does not match selected type"; }
 
+    // Income-proof specific handling
+    let extracted_amount: number | null = null;
+    let extracted_date: string | null = null;
+    let extracted_employer: string | null = null;
+    let extracted_txn_ref: string | null = null;
+    if (isIncome) {
+      const rawAmount = typeof aiJson.amount === "number" ? aiJson.amount : Number(aiJson.amount ?? NaN);
+      extracted_amount = Number.isFinite(rawAmount) && rawAmount > 0 ? Math.round(rawAmount * 100) / 100 : null;
+      const rawDate = typeof aiJson.payment_date === "string" ? aiJson.payment_date : null;
+      extracted_date = rawDate && /^\d{4}-\d{2}-\d{2}/.test(rawDate) ? rawDate.slice(0, 10) : null;
+      extracted_employer = aiJson.employer_or_platform ?? null;
+      extracted_txn_ref = aiJson.transaction_ref ?? null;
+      if (aiJson.source_matches_claim === false && status === "verified") {
+        status = "needs_review";
+        reason = reason || "Platform/employer on document does not match the selected source";
+      }
+      if (!extracted_amount && status === "verified") {
+        status = "needs_review";
+        reason = reason || "Could not extract a payment amount from the document";
+      }
+    }
+
     await supabase.from("documents").update({
       ocr_status: "done", status,
       confidence_score: confidence,
       verification_reason: reason || null,
       ocr_text: ocrText || null,
       ai_verified_at: new Date().toISOString(),
+      extracted_amount,
+      extracted_date,
+      extracted_employer,
+      extracted_txn_ref,
     } as never).eq("id", doc.id);
+
+    // On verified income proof, record a verified transaction so analytics + GigScore + loan update.
+    if (isIncome && status === "verified" && extracted_amount && extracted_amount > 0) {
+      // Avoid duplicate transaction for the same document.
+      const { data: existing } = await supabase
+        .from("transactions").select("id").eq("document_id", doc.id).maybeSingle();
+      if (!existing) {
+        await supabase.from("transactions").insert({
+          user_id: userId,
+          type: "income",
+          amount: extracted_amount,
+          source: doc.income_source ?? extracted_employer ?? null,
+          occurred_on: extracted_date ?? new Date().toISOString().slice(0, 10),
+          note: extracted_txn_ref ? `Ref: ${extracted_txn_ref}` : null,
+          verified: true,
+          document_id: doc.id,
+          frequency: doc.income_frequency ?? null,
+          confidence_score: confidence,
+        });
+      }
+    }
 
     return { status, confidence_score: confidence, verification_reason: reason };
   });
