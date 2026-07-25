@@ -36,7 +36,7 @@ export function LanguageSwitcher({ compact = false }: { compact?: boolean }) {
       <div className="mt-3 grid max-h-72 grid-cols-1 gap-1.5 overflow-y-auto sm:grid-cols-2">
         {filtered.map((l) => {
           const active = lang === l.code;
-          const translated = hasTranslations(l.code as LangCode);
+          hasTranslations(l.code as LangCode);
           return (
             <Button
               key={l.code}
@@ -50,19 +50,14 @@ export function LanguageSwitcher({ compact = false }: { compact?: boolean }) {
                 <span className="text-[11px] font-normal opacity-70">{l.label}</span>
               </span>
               <span className="flex items-center gap-2">
-                {!translated && (
-                  <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
-                    Coming
-                  </span>
-                )}
                 {active && <Check className="h-4 w-4" />}
               </span>
             </Button>
           );
         })}
       </div>
-      <p className="mt-3 text-xs text-muted-foreground">
-        Additional language translations will be available in future updates.
+      <p className="mt-3 text-xs text-muted-foreground" data-no-translate>
+        AI-powered translations. Text updates instantly across the entire app.
       </p>
     </div>
   );
