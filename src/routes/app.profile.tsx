@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { BadgeCheck, Save } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,7 @@ const CATS: WorkCategory[] = [
 
 function ProfilePage() {
   const { profile, update } = useStore();
+  const qc = useQueryClient();
   const [form, setForm] = useState({
     fullName: profile?.fullName ?? "",
     phone: profile?.phone ?? "",
@@ -45,11 +47,12 @@ function ProfilePage() {
     emergencyPhone: profile?.emergencyPhone ?? "",
   });
 
-  const save = () => {
-    update({
+  const save = async () => {
+    await update({
       ...form,
       category: (form.category || undefined) as WorkCategory | undefined,
     });
+    await qc.invalidateQueries({ queryKey: ["gigscore"] });
     toast.success("Profile updated");
   };
 
