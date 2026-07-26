@@ -311,7 +311,7 @@ Respond with JSON only.`
       const { data: existing } = await supabase
         .from("transactions").select("id").eq("document_id", doc.id).maybeSingle();
       if (!existing) {
-        await supabase.from("transactions").insert({
+        const { error: txErr } = await supabase.from("transactions").insert({
           user_id: userId,
           type: "income",
           amount: extracted_amount,
@@ -323,6 +323,13 @@ Respond with JSON only.`
           frequency: doc.income_frequency ?? null,
           confidence_score: confidence,
         });
+        if (txErr) {
+          const failReason = `Verified, but saving the income record failed: ${txErr.message}`;
+          await supabase.from("documents").update({
+            status: "needs_review", verification_reason: failReason.slice(0, 500),
+          } as never).eq("id", doc.id);
+          return { status: "needs_review" as const, confidence_score: confidence, verification_reason: failReason };
+        }
       }
     }
 
@@ -432,20 +439,56 @@ export const listMyIncomeUploads = createServerFn({ method: "GET" })
 export const getMyGigscore = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const verifiedCount = await countVerifiedRecords(context.supabase, context.userId);
-    if (verifiedCount < MIN_VERIFIED_RECORDS) {
-      return { score: null, verifiedCount, reason: "insufficient_data" as const };
+    const { supabase, userId } = context;
+    const verifiedCount = await countVerifiedRecords(supabase, userId);
+
+    // 1. GigScore stays locked until the mandatory profile fields are saved.
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("full_name, phone, category, experience, location, work_type, emergency_name, emergency_phone")
+      .eq("id", userId)
+      .maybeSingle();
+    const REQUIRED = [
+      "full_name", "phone", "category", "experience",
+      "location", "work_type", "emergency_name", "emergency_phone",
+    ] as const;
+    const missing = REQUIRED.filter((k) => {
+      const v = (profile as Record<string, unknown> | null)?.[k];
+      return v === null || v === undefined || String(v).trim() === "";
+    });
+    if (!profile || missing.length > 0) {
+      return {
+        score: null, verifiedCount, breakdown: null,
+        locked: true, missingFields: missing as unknown as string[],
+        reason: "profile_incomplete" as const,
+      };
     }
+
+    // 2. Unlocked, but the score itself comes only from verified income documents.
+    const { count: incomeCount } = await supabase
+      .from("transactions").select("id", { count: "exact", head: true })
+      .eq("user_id", userId).eq("type", "income").eq("verified", true);
+    if (!incomeCount) {
+      return {
+        score: null, verifiedCount, breakdown: null,
+        locked: false, missingFields: [],
+        reason: "no_verified_income" as const,
+      };
+    }
+
     // Recompute from the latest verified data so the score is always current.
-    await context.supabase.rpc("recompute_gigscore", { _user_id: context.userId });
-    const { data } = await context.supabase
+    await supabase.rpc("recompute_gigscore", { _user_id: userId });
+    const { data } = await supabase
       .from("gigscore_snapshots")
       .select("score, breakdown, computed_at")
-      .eq("user_id", context.userId)
+      .eq("user_id", userId)
       .order("computed_at", { ascending: false })
       .limit(1)
       .maybeSingle();
-    return { score: data?.score ?? null, verifiedCount, breakdown: data?.breakdown ?? null, reason: null };
+    return {
+      score: data?.score ?? null, verifiedCount, breakdown: data?.breakdown ?? null,
+      locked: false, missingFields: [], reason: null,
+    };
   });
 
 export const getLoanEligibility = createServerFn({ method: "GET" })
@@ -455,6 +498,10 @@ export const getLoanEligibility = createServerFn({ method: "GET" })
     if (verifiedCount < MIN_VERIFIED_RECORDS) {
       return { eligible: false, amount: null, reason: "insufficient_data" as const };
     }
+    const { count: incomeCount } = await context.supabase
+      .from("transactions").select("id", { count: "exact", head: true })
+      .eq("user_id", context.userId).eq("type", "income").eq("verified", true);
+    if (!incomeCount) return { eligible: false, amount: null, reason: "insufficient_data" as const };
     await context.supabase.rpc("recompute_gigscore", { _user_id: context.userId });
     const { data: gig } = await context.supabase
       .from("gigscore_snapshots").select("score")

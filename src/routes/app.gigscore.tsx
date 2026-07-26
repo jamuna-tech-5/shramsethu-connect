@@ -12,6 +12,7 @@ export const Route = createFileRoute("/app/gigscore")({
 function GigScorePage() {
   const { data } = useQuery({ queryKey: ["gigscore"], queryFn: () => getMyGigscore() });
   const score = data?.score;
+  const locked = data?.reason === "profile_incomplete";
   return (
     <div className="space-y-6">
       <PageHeader
@@ -33,12 +34,16 @@ function GigScorePage() {
             <h3 className="mt-6 max-w-md text-base font-semibold">
               {score
                 ? "Your GigScore reflects verified work activity."
-                : "Your GigScore will be calculated after at least 3 verified work records are added."}
+                : locked
+                  ? "Complete your Worker Profile to unlock your GigScore."
+                  : "Upload and verify your income documents in Income Analytics to generate your GigScore."}
             </h3>
             <p className="mt-2 max-w-md text-sm text-muted-foreground">
-              {data?.reason === "insufficient_data"
-                ? `We need at least 3 verified work records (currently ${data.verifiedCount ?? 0}) before we can compute a fair GigScore.`
-                : "Log gigs, verify documents and connect income sources to start building your reputation."}
+              {locked
+                ? "All mandatory Worker Profile fields must be completed and saved before your GigScore section unlocks."
+                : score
+                  ? "Calculated only from verified income, earning consistency, verified work history and verified documents."
+                  : "Upload and verify your income documents in Income Analytics to generate your GigScore."}
             </p>
           </div>
         </div>

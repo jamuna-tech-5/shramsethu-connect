@@ -2,8 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { BadgeCheck, Save } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
 
-import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,6 +33,7 @@ const CATS: WorkCategory[] = [
 
 function ProfilePage() {
   const { profile, update } = useStore();
+  const qc = useQueryClient();
   const [form, setForm] = useState({
     fullName: profile?.fullName ?? "",
     phone: profile?.phone ?? "",
@@ -46,11 +47,12 @@ function ProfilePage() {
     emergencyPhone: profile?.emergencyPhone ?? "",
   });
 
-  const save = () => {
-    update({
+  const save = async () => {
+    await update({
       ...form,
       category: (form.category || undefined) as WorkCategory | undefined,
     });
+    await qc.invalidateQueries({ queryKey: ["gigscore"] });
     toast.success("Profile updated");
   };
 
@@ -169,13 +171,6 @@ function ProfilePage() {
               <Field label="Number">
                 <Input value={form.emergencyPhone} onChange={(e) => setForm({ ...form, emergencyPhone: e.target.value })} />
               </Field>
-            </div>
-          </section>
-
-          <section className="rounded-2xl border bg-card p-5 shadow-sm">
-            <h3 className="text-sm font-semibold">Certifications</h3>
-            <div className="mt-4">
-              <EmptyState title="No certifications added yet." description="Upload certificates to build a stronger profile." />
             </div>
           </section>
         </div>
