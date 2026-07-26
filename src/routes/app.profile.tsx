@@ -171,13 +171,6 @@ function ProfilePage() {
               </Field>
             </div>
           </section>
-
-          <section className="rounded-2xl border bg-card p-5 shadow-sm">
-            <h3 className="text-sm font-semibold">Certifications</h3>
-            <div className="mt-4">
-              <EmptyState title="No certifications added yet." description="Upload certificates to build a stronger profile." />
-            </div>
-          </section>
         </div>
       </div>
     </div>
