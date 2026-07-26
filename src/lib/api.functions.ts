@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { MIN_VERIFIED_RECORDS, countVerifiedRecords } from "@/lib/verified-records";
 
 // ---------- Profile ----------
 export const getMyProfile = createServerFn({ method: "GET" })
