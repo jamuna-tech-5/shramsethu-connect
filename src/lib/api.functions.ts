@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { MIN_VERIFIED_RECORDS, countVerifiedRecords } from "@/lib/verified-records";
 
 // ---------- Profile ----------
 export const getMyProfile = createServerFn({ method: "GET" })
@@ -325,6 +326,12 @@ Respond with JSON only.`
       }
     }
 
+    // Any newly verified document/earnings proof must refresh the GigScore
+    // (and therefore loan eligibility + dashboard) immediately.
+    if (status === "verified") {
+      await supabase.rpc("recompute_gigscore", { _user_id: userId });
+    }
+
     return { status, confidence_score: confidence, verification_reason: reason };
   });
 
@@ -425,14 +432,12 @@ export const listMyIncomeUploads = createServerFn({ method: "GET" })
 export const getMyGigscore = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    // Only return a score if enough verified work exists.
-    const { count } = await context.supabase
-      .from("work_history")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", context.userId)
-      .eq("verified", true);
-    const verifiedCount = count ?? 0;
-    if (verifiedCount < 5) return { score: null, verifiedCount, reason: "insufficient_data" as const };
+    const verifiedCount = await countVerifiedRecords(context.supabase, context.userId);
+    if (verifiedCount < MIN_VERIFIED_RECORDS) {
+      return { score: null, verifiedCount, reason: "insufficient_data" as const };
+    }
+    // Recompute from the latest verified data so the score is always current.
+    await context.supabase.rpc("recompute_gigscore", { _user_id: context.userId });
     const { data } = await context.supabase
       .from("gigscore_snapshots")
       .select("score, breakdown, computed_at")
@@ -446,13 +451,16 @@ export const getMyGigscore = createServerFn({ method: "GET" })
 export const getLoanEligibility = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const [{ count: verifiedWork }, { data: gig }] = await Promise.all([
-      context.supabase.from("work_history").select("id", { count: "exact", head: true }).eq("user_id", context.userId).eq("verified", true),
-      context.supabase.from("gigscore_snapshots").select("score").eq("user_id", context.userId).order("computed_at", { ascending: false }).limit(1).maybeSingle(),
-    ]);
-    if ((verifiedWork ?? 0) < 5 || !gig?.score) {
+    const verifiedCount = await countVerifiedRecords(context.supabase, context.userId);
+    if (verifiedCount < MIN_VERIFIED_RECORDS) {
       return { eligible: false, amount: null, reason: "insufficient_data" as const };
     }
+    await context.supabase.rpc("recompute_gigscore", { _user_id: context.userId });
+    const { data: gig } = await context.supabase
+      .from("gigscore_snapshots").select("score")
+      .eq("user_id", context.userId)
+      .order("computed_at", { ascending: false }).limit(1).maybeSingle();
+    if (!gig?.score) return { eligible: false, amount: null, reason: "insufficient_data" as const };
     return { eligible: true, amount: null, reason: null };
   });
 

@@ -89,7 +89,13 @@ function DocumentsPage() {
         qc.invalidateQueries({ queryKey: ["docs"] });
         // Fire and forget — page will poll for status.
         analyzeDocument({ data: { id: rec.id } })
-          .then(() => qc.invalidateQueries({ queryKey: ["docs"] }))
+          .then(() => {
+            qc.invalidateQueries({ queryKey: ["docs"] });
+            qc.invalidateQueries({ queryKey: ["gigscore"] });
+            qc.invalidateQueries({ queryKey: ["loan"] });
+            qc.invalidateQueries({ queryKey: ["txns"] });
+            qc.invalidateQueries({ queryKey: ["income-uploads"] });
+          })
           .catch((e) => toast.error(e instanceof Error ? e.message : "AI verification failed"));
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Upload failed");
@@ -251,7 +257,12 @@ function DocumentRow({ row }: { row: DocRow }) {
 
   const reanalyzeMut = useMutation({
     mutationFn: () => analyzeDocument({ data: { id: row.id } }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["docs"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["docs"] });
+      qc.invalidateQueries({ queryKey: ["gigscore"] });
+      qc.invalidateQueries({ queryKey: ["loan"] });
+      qc.invalidateQueries({ queryKey: ["txns"] });
+    },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Verification failed"),
   });
 

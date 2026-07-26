@@ -31,11 +31,13 @@ function GigScorePage() {
               </div>
             </div>
             <h3 className="mt-6 max-w-md text-base font-semibold">
-              {score ? "Your GigScore reflects verified work activity." : "Your GigScore will be calculated after verified work activity is added."}
+              {score
+                ? "Your GigScore reflects verified work activity."
+                : "Your GigScore will be calculated after at least 3 verified work records are added."}
             </h3>
             <p className="mt-2 max-w-md text-sm text-muted-foreground">
               {data?.reason === "insufficient_data"
-                ? `We need at least 5 verified work records (currently ${data.verifiedCount ?? 0}) before we can compute a fair GigScore.`
+                ? `We need at least 3 verified work records (currently ${data.verifiedCount ?? 0}) before we can compute a fair GigScore.`
                 : "Log gigs, verify documents and connect income sources to start building your reputation."}
             </p>
           </div>
