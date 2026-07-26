@@ -357,8 +357,17 @@ function AuthPage() {
               </div>
             )}
 
-            <Button type="submit" size="lg" className="w-full rounded-xl gradient-primary text-white shadow-soft">
-              {submitting ? "Please wait…" : mode === "signup" ? "Create account" : "Sign in"} <ArrowRight className="ml-1.5 h-4 w-4" />
+            <Button type="submit" size="lg" disabled={submitting} className="w-full rounded-xl gradient-primary text-white shadow-soft">
+              {submitting ? (
+                <>
+                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                  {mode === "signup" ? "Creating your account…" : "Signing you in…"}
+                </>
+              ) : (
+                <>
+                  {mode === "signup" ? "Create account" : "Sign in"} <ArrowRight className="ml-1.5 h-4 w-4" />
+                </>
+              )}
             </Button>
 
             <div className="relative my-2">
