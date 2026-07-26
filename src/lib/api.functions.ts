@@ -326,6 +326,12 @@ Respond with JSON only.`
       }
     }
 
+    // Any newly verified document/earnings proof must refresh the GigScore
+    // (and therefore loan eligibility + dashboard) immediately.
+    if (status === "verified") {
+      await supabase.rpc("recompute_gigscore", { _user_id: userId });
+    }
+
     return { status, confidence_score: confidence, verification_reason: reason };
   });
 
