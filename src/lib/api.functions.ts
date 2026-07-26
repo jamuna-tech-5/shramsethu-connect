@@ -184,9 +184,11 @@ export const analyzeDocument = createServerFn({ method: "POST" })
  "frequency_detected": "daily"|"weekly"|"monthly"|null,
  "source_matches_claim": boolean}
 Rules:
-- verified: readable, shows a real earnings/payment amount, and the platform/employer name plausibly matches the claim.
-- needs_review: partly readable, amount unclear, or the platform/employer does not clearly match the claim.
-- rejected: unreadable, blank, obviously fabricated, or clearly a different document type.
+- BE PERMISSIVE about layout. Gig platforms (Zomato, Swiggy, Uber, Ola, Rapido, Amazon Flex, Blinkit, Zepto, employers, banks) all use different templates, logos, fonts, spacing, languages and column orders. NEVER downgrade a document because of an unfamiliar layout, missing logo, screenshot format, different font, or unusual wording.
+- verified: the document is readable AND contains an earnings/payout amount. Treat it as genuine unless there is concrete evidence of tampering. A worker name, platform/employer name, payout date or transaction details strengthen it but only the readable amount is mandatory; infer the platform from the claim when the document does not print it.
+- needs_review: ONLY when the file is partially readable and you genuinely cannot decide (e.g. amount is ambiguous between multiple candidates).
+- rejected: unreadable, blank, obviously fabricated/edited (mismatched fonts within a field, visible digit tampering, template placeholder text like "Lorem ipsum"/"sample"), or clearly a different document type (ID card, selfie, random photo) with no earnings information.
+- source_matches_claim: set true unless the document clearly shows a DIFFERENT real platform/employer than claimed. Absence of a platform name is NOT a mismatch.
 - amount MUST be a plain number (no currency symbols, no commas). If multiple amounts appear, pick the net earnings / net pay / total received amount.
 - payment_date: ISO YYYY-MM-DD when possible.
 Respond with JSON only.`
