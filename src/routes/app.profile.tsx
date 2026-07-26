@@ -3,7 +3,6 @@ import { BadgeCheck, Save } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
