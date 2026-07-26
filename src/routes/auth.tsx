@@ -1,6 +1,6 @@
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { motion } from "framer-motion";
-import { ArrowRight, Eye, EyeOff, HardHat, KeyRound, Lock, Mail, Phone, Shield, User as UserIcon } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, HardHat, KeyRound, Loader2, Lock, Mail, Phone, Shield, User as UserIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -73,15 +73,20 @@ function AuthPage() {
     setSubmitting(true);
     if (mode === "signup") {
       const res = await signUp({ fullName: form.fullName, email: form.email, phone: form.phone, password: form.password });
-      setSubmitting(false);
       if (!res.ok) {
+        setSubmitting(false);
         toast.error(res.error ?? "Sign up failed");
         return;
       }
-      toast.success("Account created. Signing you in…");
-      // If session wasn't auto-established (rare), sign in explicitly.
+      // Ensure a session exists (signUp may not return one) then redirect.
       const ok = await signIn(form.email, form.password);
-      if (!ok) toast.error("Signed up, but auto sign-in failed. Please sign in.");
+      setSubmitting(false);
+      if (!ok) {
+        toast.error("Account created, but automatic sign-in failed. Please sign in.");
+        setMode("signin");
+        return;
+      }
+      toast.success("Account created — welcome to ShramSethu");
       // Redirect handled by useEffect when session hydrates
     } else {
       const ok = await signIn(form.email, form.password);
