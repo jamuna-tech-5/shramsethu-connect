@@ -265,7 +265,7 @@ Respond with JSON only.`
     let reason = String(aiJson.reason ?? (aiJson.issues ?? []).join("; ") ?? "").slice(0, 500);
 
     if (duplicate) { status = "rejected"; reason = "Duplicate upload detected"; confidence = Math.min(confidence, 30); }
-    else if (!kindMatch && status === "verified") { status = "needs_review"; reason = reason || "Detected document type does not match selected type"; }
+    else if (!isIncome && !kindMatch && status === "verified") { status = "needs_review"; reason = reason || "Detected document type does not match selected type"; }
 
     // Income-proof specific handling
     let extracted_amount: number | null = null;
@@ -279,13 +279,16 @@ Respond with JSON only.`
       extracted_date = rawDate && /^\d{4}-\d{2}-\d{2}/.test(rawDate) ? rawDate.slice(0, 10) : null;
       extracted_employer = aiJson.employer_or_platform ?? null;
       extracted_txn_ref = aiJson.transaction_ref ?? null;
-      if (aiJson.source_matches_claim === false && status === "verified") {
-        status = "needs_review";
-        reason = reason || "Platform/employer on document does not match the selected source";
-      }
-      if (!extracted_amount && status === "verified") {
-        status = "needs_review";
-        reason = reason || "Could not extract a payment amount from the document";
+      if (status !== "rejected") {
+        if (extracted_amount) {
+          // Genuine, readable earnings proof: layout/logo/format differences never block verification.
+          status = "verified";
+          confidence = Math.max(confidence, 75);
+          reason = `Earnings verified · ₹${extracted_amount.toLocaleString("en-IN")}${extracted_employer ? ` from ${extracted_employer}` : ""}${extracted_date ? ` on ${extracted_date}` : ""}`;
+        } else {
+          status = "needs_review";
+          reason = reason || "Could not extract a payment amount from the document";
+        }
       }
     }
 
