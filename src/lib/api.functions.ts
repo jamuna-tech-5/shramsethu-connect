@@ -93,14 +93,18 @@ export const getMyDocumentUrl = createServerFn({ method: "POST" })
   .inputValidator((v: { id: string }) => v)
   .handler(async ({ data, context }) => {
     const { data: doc, error } = await context.supabase
-      .from("documents").select("storage_path, user_id").eq("id", data.id).maybeSingle();
+      .from("documents").select("storage_path, user_id, mime_type, file_name").eq("id", data.id).maybeSingle();
     if (error) throw new Error(error.message);
     if (!doc || doc.user_id !== context.userId) throw new Error("Not found");
     if (!doc.storage_path) throw new Error("File missing");
     const { data: url, error: e2 } = await context.supabase.storage
-      .from("documents").createSignedUrl(doc.storage_path, 60 * 10);
+      .from("documents").createSignedUrl(doc.storage_path, 60 * 60);
     if (e2) throw new Error(e2.message);
-    return { url: url.signedUrl };
+    return {
+      url: url.signedUrl,
+      mime_type: (doc.mime_type as string) ?? "application/octet-stream",
+      file_name: (doc.file_name as string) ?? "document",
+    };
   });
 
 export const deleteMyDocument = createServerFn({ method: "POST" })
@@ -180,9 +184,11 @@ export const analyzeDocument = createServerFn({ method: "POST" })
  "frequency_detected": "daily"|"weekly"|"monthly"|null,
  "source_matches_claim": boolean}
 Rules:
-- verified: readable, shows a real earnings/payment amount, and the platform/employer name plausibly matches the claim.
-- needs_review: partly readable, amount unclear, or the platform/employer does not clearly match the claim.
-- rejected: unreadable, blank, obviously fabricated, or clearly a different document type.
+- BE PERMISSIVE about layout. Gig platforms (Zomato, Swiggy, Uber, Ola, Rapido, Amazon Flex, Blinkit, Zepto, employers, banks) all use different templates, logos, fonts, spacing, languages and column orders. NEVER downgrade a document because of an unfamiliar layout, missing logo, screenshot format, different font, or unusual wording.
+- verified: the document is readable AND contains an earnings/payout amount. Treat it as genuine unless there is concrete evidence of tampering. A worker name, platform/employer name, payout date or transaction details strengthen it but only the readable amount is mandatory; infer the platform from the claim when the document does not print it.
+- needs_review: ONLY when the file is partially readable and you genuinely cannot decide (e.g. amount is ambiguous between multiple candidates).
+- rejected: unreadable, blank, obviously fabricated/edited (mismatched fonts within a field, visible digit tampering, template placeholder text like "Lorem ipsum"/"sample"), or clearly a different document type (ID card, selfie, random photo) with no earnings information.
+- source_matches_claim: set true unless the document clearly shows a DIFFERENT real platform/employer than claimed. Absence of a platform name is NOT a mismatch.
 - amount MUST be a plain number (no currency symbols, no commas). If multiple amounts appear, pick the net earnings / net pay / total received amount.
 - payment_date: ISO YYYY-MM-DD when possible.
 Respond with JSON only.`
@@ -259,7 +265,7 @@ Respond with JSON only.`
     let reason = String(aiJson.reason ?? (aiJson.issues ?? []).join("; ") ?? "").slice(0, 500);
 
     if (duplicate) { status = "rejected"; reason = "Duplicate upload detected"; confidence = Math.min(confidence, 30); }
-    else if (!kindMatch && status === "verified") { status = "needs_review"; reason = reason || "Detected document type does not match selected type"; }
+    else if (!isIncome && !kindMatch && status === "verified") { status = "needs_review"; reason = reason || "Detected document type does not match selected type"; }
 
     // Income-proof specific handling
     let extracted_amount: number | null = null;
@@ -273,13 +279,16 @@ Respond with JSON only.`
       extracted_date = rawDate && /^\d{4}-\d{2}-\d{2}/.test(rawDate) ? rawDate.slice(0, 10) : null;
       extracted_employer = aiJson.employer_or_platform ?? null;
       extracted_txn_ref = aiJson.transaction_ref ?? null;
-      if (aiJson.source_matches_claim === false && status === "verified") {
-        status = "needs_review";
-        reason = reason || "Platform/employer on document does not match the selected source";
-      }
-      if (!extracted_amount && status === "verified") {
-        status = "needs_review";
-        reason = reason || "Could not extract a payment amount from the document";
+      if (status !== "rejected") {
+        if (extracted_amount) {
+          // Genuine, readable earnings proof: layout/logo/format differences never block verification.
+          status = "verified";
+          confidence = Math.max(confidence, 75);
+          reason = `Earnings verified · ₹${extracted_amount.toLocaleString("en-IN")}${extracted_employer ? ` from ${extracted_employer}` : ""}${extracted_date ? ` on ${extracted_date}` : ""}`;
+        } else {
+          status = "needs_review";
+          reason = reason || "Could not extract a payment amount from the document";
+        }
       }
     }
 

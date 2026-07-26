@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import {
-  AlertTriangle, BarChart3, CheckCircle2, Clock, Download, Eye,
+  AlertTriangle, BarChart3, CheckCircle2, Clock, Eye,
   FileCheck2, LineChart as LineIcon, Link2, Loader2, PiggyBank, ShieldCheck,
   Upload, XCircle,
 } from "lucide-react";
@@ -391,18 +391,11 @@ function UploadEarningsDialog({ onSaved }: { onSaved: () => void }) {
 }
 
 function UploadRow({ row }: { row: UploadRow }) {
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [file, setFile] = useState<{ url: string; mime_type: string; file_name: string } | null>(null);
   const openMut = useMutation({
-    mutationFn: async (action: "view" | "download") => {
-      const { url } = await getMyDocumentUrl({ data: { id: row.id } });
-      if (action === "download") {
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = row.file_name || "earnings-proof";
-        document.body.appendChild(a); a.click(); a.remove();
-      } else {
-        window.open(url, "_blank", "noopener,noreferrer");
-      }
-    },
+    mutationFn: async () => getMyDocumentUrl({ data: { id: row.id } }),
+    onSuccess: (f) => { setFile(f); setViewerOpen(true); },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Could not open file"),
   });
   const running = row.ocr_status === "queued" || row.ocr_status === "running";
@@ -444,13 +437,37 @@ function UploadRow({ row }: { row: UploadRow }) {
         <IncomeStatusPill status={row.status} confidence={row.confidence_score ?? null} running={running} />
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <Button size="sm" variant="outline" className="rounded-full" onClick={() => openMut.mutate("view")}>
-          <Eye className="mr-1.5 h-3.5 w-3.5" /> View
-        </Button>
-        <Button size="sm" variant="outline" className="rounded-full" onClick={() => openMut.mutate("download")}>
-          <Download className="mr-1.5 h-3.5 w-3.5" /> Download
+        <Button size="sm" variant="outline" className="rounded-full" disabled={openMut.isPending} onClick={() => openMut.mutate()}>
+          {openMut.isPending
+            ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+            : <Eye className="mr-1.5 h-3.5 w-3.5" />} View
         </Button>
       </div>
+
+      <Dialog open={viewerOpen} onOpenChange={setViewerOpen}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle className="truncate">{row.file_name || "Uploaded document"}</DialogTitle>
+          </DialogHeader>
+          {file ? (
+            file.mime_type?.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/i.test(file.file_name) ? (
+              <img
+                src={file.url}
+                alt={`Earnings proof ${row.file_name ?? ""}`}
+                className="max-h-[70vh] w-full rounded-xl border object-contain"
+              />
+            ) : (
+              <iframe
+                src={file.url}
+                title={row.file_name || "Document"}
+                className="h-[70vh] w-full rounded-xl border"
+              />
+            )
+          ) : (
+            <div className="grid h-40 place-items-center"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
