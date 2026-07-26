@@ -12,6 +12,7 @@ import {
 } from "recharts";
 
 import { PageHeader } from "@/components/PageHeader";
+import { refreshVerifiedData } from "@/lib/refresh";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -140,10 +141,7 @@ function IncomePage() {
         description="Upload earnings proof — our AI reads it, verifies the amount, and updates your analytics, GigScore, and loan eligibility."
         actions={
           <UploadEarningsDialog onSaved={() => {
-            qc.invalidateQueries({ queryKey: ["income-uploads"] });
-            qc.invalidateQueries({ queryKey: ["txns"] });
-            qc.invalidateQueries({ queryKey: ["gigscore"] });
-            qc.invalidateQueries({ queryKey: ["loan"] });
+            refreshVerifiedData(qc);
           }} />
         }
       />

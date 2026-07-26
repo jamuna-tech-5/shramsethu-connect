@@ -16,6 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { useStore } from "@/lib/store";
+import { refreshVerifiedData } from "@/lib/refresh";
 import {
   analyzeDocument, deleteMyDocument, getMyDocumentUrl,
   listMyDocuments, recordDocument, type DocKind,
@@ -90,11 +91,7 @@ function DocumentsPage() {
         // Fire and forget — page will poll for status.
         analyzeDocument({ data: { id: rec.id } })
           .then(() => {
-            qc.invalidateQueries({ queryKey: ["docs"] });
-            qc.invalidateQueries({ queryKey: ["gigscore"] });
-            qc.invalidateQueries({ queryKey: ["loan"] });
-            qc.invalidateQueries({ queryKey: ["txns"] });
-            qc.invalidateQueries({ queryKey: ["income-uploads"] });
+            refreshVerifiedData(qc);
           })
           .catch((e) => toast.error(e instanceof Error ? e.message : "AI verification failed"));
       } catch (e) {
@@ -258,17 +255,14 @@ function DocumentRow({ row }: { row: DocRow }) {
   const reanalyzeMut = useMutation({
     mutationFn: () => analyzeDocument({ data: { id: row.id } }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["docs"] });
-      qc.invalidateQueries({ queryKey: ["gigscore"] });
-      qc.invalidateQueries({ queryKey: ["loan"] });
-      qc.invalidateQueries({ queryKey: ["txns"] });
+      refreshVerifiedData(qc);
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Verification failed"),
   });
 
   const deleteMut = useMutation({
     mutationFn: () => deleteMyDocument({ data: { id: row.id } }),
-    onSuccess: () => { toast.success("Document deleted"); qc.invalidateQueries({ queryKey: ["docs"] }); },
+    onSuccess: () => { toast.success("Document deleted"); refreshVerifiedData(qc); },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Delete failed"),
   });
 
