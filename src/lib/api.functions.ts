@@ -93,14 +93,18 @@ export const getMyDocumentUrl = createServerFn({ method: "POST" })
   .inputValidator((v: { id: string }) => v)
   .handler(async ({ data, context }) => {
     const { data: doc, error } = await context.supabase
-      .from("documents").select("storage_path, user_id").eq("id", data.id).maybeSingle();
+      .from("documents").select("storage_path, user_id, mime_type, file_name").eq("id", data.id).maybeSingle();
     if (error) throw new Error(error.message);
     if (!doc || doc.user_id !== context.userId) throw new Error("Not found");
     if (!doc.storage_path) throw new Error("File missing");
     const { data: url, error: e2 } = await context.supabase.storage
-      .from("documents").createSignedUrl(doc.storage_path, 60 * 10);
+      .from("documents").createSignedUrl(doc.storage_path, 60 * 60);
     if (e2) throw new Error(e2.message);
-    return { url: url.signedUrl };
+    return {
+      url: url.signedUrl,
+      mime_type: (doc.mime_type as string) ?? "application/octet-stream",
+      file_name: (doc.file_name as string) ?? "document",
+    };
   });
 
 export const deleteMyDocument = createServerFn({ method: "POST" })
