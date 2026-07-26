@@ -140,10 +140,7 @@ function IncomePage() {
         description="Upload earnings proof — our AI reads it, verifies the amount, and updates your analytics, GigScore, and loan eligibility."
         actions={
           <UploadEarningsDialog onSaved={() => {
-            qc.invalidateQueries({ queryKey: ["income-uploads"] });
-            qc.invalidateQueries({ queryKey: ["txns"] });
-            qc.invalidateQueries({ queryKey: ["gigscore"] });
-            qc.invalidateQueries({ queryKey: ["loan"] });
+            refreshVerifiedData(qc);
           }} />
         }
       />
