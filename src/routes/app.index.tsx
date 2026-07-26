@@ -30,7 +30,7 @@ function Dashboard() {
   const docs = useQuery({ queryKey: ["docs"], queryFn: () => listMyDocuments(), enabled: !!profile });
   const notifs = useQuery({ queryKey: ["notifs"], queryFn: () => listMyNotifications(), enabled: !!profile });
   const work = useQuery({ queryKey: ["work"], queryFn: () => listMyWorkHistory(), enabled: !!profile });
-  const gig = useQuery({ queryKey: ["gig"], queryFn: () => getMyGigscore(), enabled: !!profile });
+  const gig = useQuery({ queryKey: ["gigscore"], queryFn: () => getMyGigscore(), enabled: !!profile });
   const verified = (docs.data ?? []).filter((d) => d.status === "verified").length;
   const totalDocs = Math.max(docs.data?.length ?? 0, 3);
 
