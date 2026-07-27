@@ -719,20 +719,78 @@ export const listMyShares = createServerFn({ method: "GET" })
     return { outgoing: outgoing.data ?? [], incoming: incoming.data ?? [] };
   });
 
+// ---------- Maps: shared credential resolution ----------
+// Works both inside Lovable (connector gateway) and on any other host
+// (a plain Google Maps server key in GOOGLE_MAPS_SERVER_KEY).
+function mapsRequest(pathSuffix: "routes" | "places") {
+  const serverKey = process.env.GOOGLE_MAPS_SERVER_KEY?.trim();
+  const lovableKey = process.env.LOVABLE_API_KEY?.trim();
+  const connectorKey = process.env.GOOGLE_MAPS_API_KEY?.trim();
+  if (serverKey) {
+    return {
+      url:
+        pathSuffix === "routes"
+          ? "https://routes.googleapis.com/directions/v2:computeRoutes"
+          : "https://places.googleapis.com/v1/places:searchNearby",
+      headers: { "Content-Type": "application/json", "X-Goog-Api-Key": serverKey } as Record<string, string>,
+    };
+  }
+  if (lovableKey && connectorKey) {
+    return {
+      url:
+        pathSuffix === "routes"
+          ? "https://connector-gateway.lovable.dev/google_maps/routes/directions/v2:computeRoutes"
+          : "https://connector-gateway.lovable.dev/google_maps/places/v1/places:searchNearby",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${lovableKey}`,
+        "X-Connection-Api-Key": connectorKey,
+      } as Record<string, string>,
+    };
+  }
+  return null;
+}
+
+// OpenStreetMap fallback so nearby search keeps working without any Google key.
+async function overpassNearby(lat: number, lng: number, includedType: string, radius: number) {
+  const filters: Record<string, string> = {
+    gas_station: 'node["amenity"="fuel"]',
+    hospital: 'node["amenity"~"hospital|clinic|doctors"]',
+    electric_vehicle_charging_station: 'node["amenity"="charging_station"]',
+    police: 'node["amenity"="police"]',
+    pharmacy: 'node["amenity"="pharmacy"]',
+    restaurant: 'node["amenity"="restaurant"]',
+  };
+  const filter = filters[includedType] ?? `node["amenity"="${includedType}"]`;
+  const query = `[out:json][timeout:20];${filter}(around:${radius},${lat},${lng});out 15;`;
+  const res = await fetch("https://overpass-api.de/api/interpreter", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: `data=${encodeURIComponent(query)}`,
+  });
+  if (!res.ok) throw new Error(`Nearby search failed [${res.status}]`);
+  const json = (await res.json()) as {
+    elements?: Array<{ id: number; lat: number; lon: number; tags?: Record<string, string> }>;
+  };
+  return (json.elements ?? []).map((e) => ({
+    id: String(e.id),
+    displayName: { text: e.tags?.name ?? e.tags?.operator ?? "Unnamed place" },
+    formattedAddress: [e.tags?.["addr:street"], e.tags?.["addr:city"]].filter(Boolean).join(", ") || undefined,
+    location: { latitude: e.lat, longitude: e.lon },
+  }));
+}
+
 // ---------- Maps: routes/directions ----------
 export const computeRoute = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((v: { origin: { lat: number; lng: number }; destination: { lat: number; lng: number } }) => v)
   .handler(async ({ data }) => {
-    const LOVABLE_API_KEY = process.env.LOVABLE_API_KEY;
-    const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
-    if (!LOVABLE_API_KEY || !GOOGLE_MAPS_API_KEY) throw new Error("Google Maps not configured");
-    const res = await fetch("https://connector-gateway.lovable.dev/google_maps/routes/directions/v2:computeRoutes", {
+    const req = mapsRequest("routes");
+    if (!req) throw new Error("Directions are not configured on this deployment. Add GOOGLE_MAPS_SERVER_KEY to your hosting environment variables.");
+    const res = await fetch(req.url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "X-Connection-Api-Key": GOOGLE_MAPS_API_KEY,
-        "Content-Type": "application/json",
+        ...req.headers,
         "X-Goog-FieldMask": "routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline",
       },
       body: JSON.stringify({
@@ -759,28 +817,30 @@ export const nearbyPlaces = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((v: { lat: number; lng: number; includedType: string; radiusMeters?: number }) => v)
   .handler(async ({ data }) => {
-    const LOVABLE_API_KEY = process.env.LOVABLE_API_KEY;
-    const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
-    if (!LOVABLE_API_KEY || !GOOGLE_MAPS_API_KEY) throw new Error("Google Maps not configured");
-    const res = await fetch("https://connector-gateway.lovable.dev/google_maps/places/v1/places:searchNearby", {
+    const radius = data.radiusMeters ?? 8000;
+    const req = mapsRequest("places");
+    if (!req) return await overpassNearby(data.lat, data.lng, data.includedType, radius);
+    const res = await fetch(req.url, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "X-Connection-Api-Key": GOOGLE_MAPS_API_KEY,
-        "Content-Type": "application/json",
+        ...req.headers,
         "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount",
       },
       body: JSON.stringify({
         includedTypes: [data.includedType],
         maxResultCount: 15,
         locationRestriction: {
-          circle: { center: { latitude: data.lat, longitude: data.lng }, radius: data.radiusMeters ?? 8000 },
+          circle: { center: { latitude: data.lat, longitude: data.lng }, radius },
         },
       }),
     });
     if (!res.ok) {
       const body = await res.text();
-      throw new Error(`Google Maps error [${res.status}]: ${body.slice(0, 300)}`);
+      // Restricted/invalid key in production — degrade to OpenStreetMap instead of failing.
+      if (res.status === 403 || res.status === 400) {
+        return await overpassNearby(data.lat, data.lng, data.includedType, radius);
+      }
+      throw new Error(`Nearby search error [${res.status}]: ${body.slice(0, 300)}`);
     }
     const json = (await res.json()) as { places?: Array<Record<string, unknown>> };
     return (json.places ?? []) as unknown as Array<{
