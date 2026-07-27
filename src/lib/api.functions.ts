@@ -164,8 +164,14 @@ export const analyzeDocument = createServerFn({ method: "POST" })
     const b64 = typeof btoa !== "undefined" ? btoa(binary) : Buffer.from(buf).toString("base64");
     const mime = (doc.mime_type as string) || "application/octet-stream";
 
-    const LOVABLE_API_KEY = process.env.LOVABLE_API_KEY;
-    if (!LOVABLE_API_KEY) throw new Error("AI not configured");
+    const { aiPrompt, parseJsonLoose, resolveAiProvider, AI_NOT_CONFIGURED_MESSAGE } = await import("@/lib/ai.server");
+    if (!resolveAiProvider()) {
+      await supabase.from("documents").update({
+        ocr_status: "failed", status: "needs_review",
+        verification_reason: AI_NOT_CONFIGURED_MESSAGE, ai_verified_at: new Date().toISOString(),
+      } as never).eq("id", doc.id);
+      return { status: "needs_review", confidence_score: 0, verification_reason: AI_NOT_CONFIGURED_MESSAGE };
+    }
 
     const isIncome = !!doc.is_income_proof;
     const prompt = isIncome
@@ -205,32 +211,12 @@ Respond with JSON only.`
     } = {};
     let ocrText = "";
     try {
-      const isImage = mime.startsWith("image/");
-      const content: Array<Record<string, unknown>> = [{ type: "text", text: prompt }];
-      if (isImage) {
-        content.push({ type: "image_url", image_url: { url: `data:${mime};base64,${b64}` } });
-      } else {
-        content.push({ type: "file", file: { filename: doc.file_name ?? "document", file_data: `data:${mime};base64,${b64}` } });
-      }
-      const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Lovable-API-Key": LOVABLE_API_KEY },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: [{ role: "user", content }],
-          response_format: { type: "json_object" },
-        }),
+      const raw = await aiPrompt({
+        prompt,
+        json: true,
+        attachment: { mime, b64, filename: (doc.file_name as string) ?? "document" },
       });
-      if (!res.ok) {
-        const t = await res.text();
-        throw new Error(`AI error [${res.status}]: ${t.slice(0, 200)}`);
-      }
-      const j = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
-      const raw = j.choices?.[0]?.message?.content ?? "{}";
-      try { aiJson = JSON.parse(raw); } catch {
-        const m = raw.match(/\{[\s\S]*\}/);
-        aiJson = m ? JSON.parse(m[0]) : {};
-      }
+      aiJson = parseJsonLoose(raw, {} as typeof aiJson);
       ocrText = String(aiJson.extracted_text ?? "").slice(0, 15000);
     } catch (e) {
       const reason = e instanceof Error ? e.message : "OCR failed";
