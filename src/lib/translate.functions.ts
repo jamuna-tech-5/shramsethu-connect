@@ -18,9 +18,7 @@ export const translateBatch = createServerFn({ method: "POST" })
     if (!texts?.length || lang === "en" || !LANG_NAMES[lang]) {
       return { translations: texts ?? [] };
     }
-    const apiKey = process.env.LOVABLE_API_KEY;
-    if (!apiKey) throw new Error("LOVABLE_API_KEY not configured");
-
+    const { aiPrompt } = await import("@/lib/ai.server");
     const target = LANG_NAMES[lang];
     const system = `You are a professional UI localizer. Translate each string in the provided JSON array from English to ${target}.
 Rules:
@@ -29,23 +27,10 @@ Rules:
 - Keep translations short and natural for buttons/labels; do not add explanations.
 - If a string is a brand/proper noun or empty, keep it unchanged.`;
 
-    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: JSON.stringify(texts) },
-        ],
-      }),
+    const content = await aiPrompt({
+      system,
+      prompt: JSON.stringify(texts),
     });
-    if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`AI translate failed: ${res.status} ${body.slice(0, 200)}`);
-    }
-    const json = await res.json();
-    const content: string = json?.choices?.[0]?.message?.content ?? "[]";
     const cleaned = content.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
     let parsed: unknown;
     try {
