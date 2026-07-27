@@ -1,29 +1,47 @@
 import { createServerFn } from "@tanstack/react-start";
 import { useSession } from "@tanstack/react-start/server";
-import { createHash, timingSafeEqual } from "node:crypto";
 
-const sessionConfig = {
-  password: process.env.SESSION_SECRET || "dev-only-fallback-please-set-session-secret-000000",
-  name: "shramsethu-admin",
-  maxAge: 60 * 60 * 8,
-  cookie: {
-    httpOnly: true,
-    secure: true,
-    sameSite: "lax" as const,
-    path: "/",
-  },
-};
+// Built per request: env vars are only reliably injected at call time on
+// serverless hosts (Vercel/Cloudflare), not at module evaluation.
+function getSessionConfig() {
+  const secret = process.env.SESSION_SECRET?.trim();
+  return {
+    password: secret && secret.length >= 32 ? secret : "shramsethu-dev-fallback-session-secret-000000",
+    name: "shramsethu-admin",
+    maxAge: 60 * 60 * 8,
+    cookie: {
+      httpOnly: true,
+      // http://localhost during local dev cannot store a Secure cookie.
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax" as const,
+      path: "/",
+    },
+  };
+}
 
 type AdminSession = { unlocked?: boolean; unlockedAt?: number };
 
-function safeEqual(a: string, b: string): boolean {
-  const ha = createHash("sha256").update(a, "utf8").digest();
-  const hb = createHash("sha256").update(b, "utf8").digest();
-  return timingSafeEqual(ha, hb);
+// Runtime-agnostic constant-time comparison (Web Crypto works on Node, Vercel and Workers).
+async function safeEqual(a: string, b: string): Promise<boolean> {
+  const enc = new TextEncoder();
+  const [ha, hb] = await Promise.all([
+    crypto.subtle.digest("SHA-256", enc.encode(a)),
+    crypto.subtle.digest("SHA-256", enc.encode(b)),
+  ]);
+  const va = new Uint8Array(ha);
+  const vb = new Uint8Array(hb);
+  let diff = 0;
+  for (let i = 0; i < va.length; i++) diff |= va[i] ^ vb[i];
+  return diff === 0;
 }
 
 async function requireAdminSession() {
-  const session = await useSession<AdminSession>(sessionConfig);
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || !process.env.SUPABASE_URL?.trim()) {
+    throw new Error(
+      "Admin dashboard is not configured on this deployment. Add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to your hosting environment variables.",
+    );
+  }
+  const session = await useSession<AdminSession>(getSessionConfig());
   if (!session.data.unlocked) throw new Error("Admin access required");
   return session;
 }
@@ -32,26 +50,30 @@ export const adminUnlock = createServerFn({ method: "POST" })
   .inputValidator((v: { code: string }) => v)
   .handler(async ({ data }) => {
     const expected = process.env.ADMIN_SECRET_CODE;
-    if (!expected) throw new Error("Admin access is not configured");
+    if (!expected) {
+      throw new Error(
+        "Admin access is not configured. Add ADMIN_SECRET_CODE to your hosting environment variables.",
+      );
+    }
     if (!data.code || typeof data.code !== "string") {
       return { ok: false as const };
     }
-    if (!safeEqual(data.code.trim(), expected)) {
+    if (!(await safeEqual(data.code.trim(), expected.trim()))) {
       return { ok: false as const };
     }
-    const session = await useSession<AdminSession>(sessionConfig);
+    const session = await useSession<AdminSession>(getSessionConfig());
     await session.update({ unlocked: true, unlockedAt: Date.now() });
     return { ok: true as const };
   });
 
 export const adminLock = createServerFn({ method: "POST" }).handler(async () => {
-  const session = await useSession<AdminSession>(sessionConfig);
+  const session = await useSession<AdminSession>(getSessionConfig());
   await session.clear();
   return { ok: true as const };
 });
 
 export const adminSessionStatus = createServerFn({ method: "GET" }).handler(async () => {
-  const session = await useSession<AdminSession>(sessionConfig);
+  const session = await useSession<AdminSession>(getSessionConfig());
   return { unlocked: !!session.data.unlocked };
 });
 
