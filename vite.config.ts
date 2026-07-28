@@ -6,7 +6,14 @@
 // You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
+// Outside Lovable the deploy plugin defaults to the Cloudflare preset. On Vercel
+// that produces a Worker bundle Vercel cannot run, so every server function
+// (admin dashboard, OCR, nearby places) 404s in production. Detect Vercel's
+// build env and pin the matching Nitro preset instead.
+const isVercel = !!process.env.VERCEL;
+
 export default defineConfig({
+  ...(isVercel ? { nitro: { preset: "vercel" } } : {}),
   tanstackStart: {
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
     // nitro/vite builds from this

@@ -220,6 +220,7 @@ Respond with JSON only.`
       ocrText = String(aiJson.extracted_text ?? "").slice(0, 15000);
     } catch (e) {
       const reason = e instanceof Error ? e.message : "OCR failed";
+      console.error("[ocr] analyzeDocument failed", { documentId: doc.id, mime, reason });
       await supabase.from("documents").update({
         ocr_status: "failed", status: "needs_review",
         verification_reason: reason, ai_verified_at: new Date().toISOString(),

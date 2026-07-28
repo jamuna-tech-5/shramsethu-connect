@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { InteractiveMap } from "@/components/InteractiveMap";
+import { getCurrentCoords } from "@/lib/geolocation";
 import { useStore } from "@/lib/store";
 import {
   listMyShares, recordLocation, searchWorkers, startLocationShare,
@@ -35,24 +36,22 @@ function LocationPage() {
   const shares = useQuery({ queryKey: ["shares"], queryFn: () => listMyShares() });
 
   const request = () => {
-    if (!("geolocation" in navigator)) {
-      setError("Geolocation is not supported by this browser.");
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      async (p) => {
-        setCoords({ lat: p.coords.latitude, lng: p.coords.longitude });
+    getCurrentCoords()
+      .then(async (c) => {
+        setCoords({ lat: c.lat, lng: c.lng });
         setError(null);
         try {
-          await recordLocation({ data: { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy } });
+          await recordLocation({ data: { lat: c.lat, lng: c.lng, accuracy: c.accuracy } });
           toast.success("Location shared");
         } catch (e) {
+          console.error("[location] save failed", e);
           toast.error(e instanceof Error ? e.message : "Failed to save location");
         }
-      },
-      (err) => setError(err.message),
-      { enableHighAccuracy: true, timeout: 10000 },
-    );
+      })
+      .catch((e: Error) => {
+        console.error("[location] gps failed", e);
+        setError(e.message);
+      });
   };
 
   // Live tracking: while any live share is active, push updates every 20s.

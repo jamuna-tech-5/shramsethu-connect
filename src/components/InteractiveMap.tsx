@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useRef, useState } from "react";
 import "leaflet/dist/leaflet.css";
+import { getMapsBrowserKey } from "@/lib/maps.functions";
 
 type LatLng = { lat: number; lng: number };
 export type MapMarker = { position: LatLng; title?: string; color?: string };
@@ -38,6 +39,7 @@ function decodePolyline(str: string): LatLng[] {
 function resolveGoogleKey(): string | null {
   const own = (import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined)?.trim();
   if (own) return own;
+  if (runtimeKey) return runtimeKey;
   if (typeof window === "undefined") return null;
   const host = window.location.hostname;
   const lovableHost =
@@ -48,6 +50,26 @@ function resolveGoogleKey(): string | null {
   if (!lovableHost) return null;
   const connector = (import.meta.env.VITE_LOVABLE_CONNECTOR_GOOGLE_MAPS_BROWSER_KEY as string | undefined)?.trim();
   return connector || null;
+}
+
+// A Maps key configured only as a runtime env var (common on Vercel, where
+// VITE_* vars must exist at build time) is fetched once from the server.
+let runtimeKey: string | null = null;
+let runtimeKeyPromise: Promise<string | null> | null = null;
+function fetchRuntimeKey(): Promise<string | null> {
+  if (runtimeKey) return Promise.resolve(runtimeKey);
+  if (!runtimeKeyPromise) {
+    runtimeKeyPromise = getMapsBrowserKey()
+      .then((r) => {
+        runtimeKey = r.key;
+        return runtimeKey;
+      })
+      .catch((e) => {
+        console.warn("[maps] runtime key lookup failed", e);
+        return null;
+      });
+  }
+  return runtimeKeyPromise;
 }
 
 function loadMaps(key: string): Promise<void> {
@@ -92,7 +114,21 @@ export function InteractiveMap({
   useEffect(() => {
     const onFail = () => setUseLeaflet(true);
     window.addEventListener("ss-map-auth-failed", onFail);
-    if (!resolveGoogleKey() || window.__ssMapAuthFailed) setUseLeaflet(true);
+    if (window.__ssMapAuthFailed) {
+      setUseLeaflet(true);
+    } else if (!resolveGoogleKey()) {
+      // Try a runtime-provided key before falling back to OpenStreetMap.
+      let cancelled = false;
+      fetchRuntimeKey().then((k) => {
+        if (cancelled) return;
+        if (k) setUseLeaflet(false);
+        else setUseLeaflet(true);
+      });
+      return () => {
+        cancelled = true;
+        window.removeEventListener("ss-map-auth-failed", onFail);
+      };
+    }
     return () => window.removeEventListener("ss-map-auth-failed", onFail);
   }, []);
 
