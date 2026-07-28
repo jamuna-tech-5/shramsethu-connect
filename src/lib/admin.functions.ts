@@ -37,12 +37,19 @@ async function safeEqual(a: string, b: string): Promise<boolean> {
 
 async function requireAdminSession() {
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || !process.env.SUPABASE_URL?.trim()) {
+    console.error("[admin] missing backend env", {
+      hasUrl: !!process.env.SUPABASE_URL,
+      hasServiceRole: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+    });
     throw new Error(
       "Admin dashboard is not configured on this deployment. Add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to your hosting environment variables.",
     );
   }
   const session = await useSession<AdminSession>(getSessionConfig());
-  if (!session.data.unlocked) throw new Error("Admin access required");
+  if (!session.data.unlocked) {
+    console.warn("[admin] request without unlocked session");
+    throw new Error("Admin access required");
+  }
   return session;
 }
 
@@ -51,6 +58,7 @@ export const adminUnlock = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const expected = process.env.ADMIN_SECRET_CODE;
     if (!expected) {
+      console.error("[admin] ADMIN_SECRET_CODE is not set on this deployment");
       throw new Error(
         "Admin access is not configured. Add ADMIN_SECRET_CODE to your hosting environment variables.",
       );
