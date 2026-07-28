@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { InteractiveMap, type MapMarker } from "@/components/InteractiveMap";
 import { useMutation } from "@tanstack/react-query";
 import { nearbyPlaces } from "@/lib/api.functions";
+import { getCurrentCoords } from "@/lib/geolocation";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/app/charging")({
@@ -31,15 +32,15 @@ function ChargingPage() {
   const [center, setCenter] = useState<{ lat: number; lng: number } | null>(null);
   const search = useMutation({
     mutationFn: async (cat: CategoryKey) => {
-      const coords = await new Promise<GeolocationPosition>((resolve, reject) => {
-        if (!("geolocation" in navigator)) return reject(new Error("Geolocation not supported"));
-        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 8000, enableHighAccuracy: true });
-      });
-      const c = { lat: coords.coords.latitude, lng: coords.coords.longitude };
+      const coords = await getCurrentCoords();
+      const c = { lat: coords.lat, lng: coords.lng };
       setCenter(c);
       return nearbyPlaces({ data: { lat: c.lat, lng: c.lng, includedType: cat } });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => {
+      console.error("[nearby] search failed", e);
+      toast.error(e.message);
+    },
   });
   const places = (search.data ?? []) as Place[];
   const filtered = places.filter((s) => {
