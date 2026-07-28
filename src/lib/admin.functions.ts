@@ -5,6 +5,9 @@ import { useSession } from "@tanstack/react-start/server";
 // serverless hosts (Vercel/Cloudflare), not at module evaluation.
 function getSessionConfig() {
   const secret = process.env.SESSION_SECRET?.trim();
+  if ((!secret || secret.length < 32) && process.env.NODE_ENV === "production") {
+    console.warn("[admin] SESSION_SECRET missing/too short (<32 chars) — admin sessions will not persist reliably.");
+  }
   return {
     password: secret && secret.length >= 32 ? secret : "shramsethu-dev-fallback-session-secret-000000",
     name: "shramsethu-admin",
