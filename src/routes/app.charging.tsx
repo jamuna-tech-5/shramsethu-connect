@@ -47,6 +47,16 @@ function ChargingPage() {
     return !q || name.includes(q.toLowerCase()) || (s.formattedAddress ?? "").toLowerCase().includes(q.toLowerCase());
   });
   const active = CATEGORIES.find((c) => c.key === category)!;
+
+  const openDirections = (destLat: number, destLng: number) => {
+    if (!center) {
+      toast.error("Location unavailable. Enable location permission and tap 'Find near me' first.");
+      return;
+    }
+    const url = `https://www.google.com/maps/dir/?api=1&origin=${center.lat},${center.lng}&destination=${destLat},${destLng}&travelmode=driving`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
   const markers: MapMarker[] = [
     ...(center ? [{ position: center, title: "You", color: "#4F46E5" } as MapMarker] : []),
     ...filtered.filter((p) => p.location).map((p) => ({
@@ -107,8 +117,13 @@ function ChargingPage() {
                       <div className="mt-1 text-[11px] text-muted-foreground">★ {s.rating.toFixed(1)} · {s.userRatingCount ?? 0} reviews</div>
                     )}
                     {s.location && (
-                      <a target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-[11px] font-medium text-primary"
-                        href={`https://www.google.com/maps/dir/?api=1&destination=${s.location.latitude},${s.location.longitude}`}>Directions →</a>
+                      <button
+                        type="button"
+                        className="mt-1 inline-block text-[11px] font-medium text-primary"
+                        onClick={() => openDirections(s.location!.latitude, s.location!.longitude)}
+                      >
+                        Directions →
+                      </button>
                     )}
                   </li>
                 ))}
