@@ -307,39 +307,65 @@ Return STRICT JSON only:
     const kw = KIND_KEYWORDS[String(doc.kind)] ?? [];
     const kindMatch = kw.length === 0 || kw.some((k) => ocrText.toLowerCase().includes(k));
 
-    let confidence = Math.max(0, Math.min(100, Math.round(Number(aiJson.confidence ?? 0))));
+    // ---- Decision: authenticity pass drives the verdict; OCR never verifies on its own ----
+    const VERIFY_THRESHOLD = 90;
+    let confidence = Math.max(0, Math.min(100, Math.round(Number(auth.authenticity_confidence ?? 0))));
+    const tampering = (auth.tampering_signals ?? []).filter(Boolean);
+    const missing = (auth.missing_fields ?? []).filter(Boolean);
+    const aiLikelihood = Math.max(0, Math.min(100, Math.round(Number(auth.ai_generated_likelihood ?? 0))));
+
     let status: "verified" | "needs_review" | "rejected" =
-      aiJson.status === "verified" || aiJson.status === "needs_review" || aiJson.status === "rejected"
-        ? aiJson.status : "needs_review";
-    let reason = String(aiJson.reason ?? (aiJson.issues ?? []).join("; ") ?? "").slice(0, 500);
+      auth.verdict === "verified" || auth.verdict === "needs_review" || auth.verdict === "rejected"
+        ? auth.verdict
+        : "needs_review";
+    let reason = String(auth.reason ?? "").slice(0, 500);
 
-    if (duplicate) { status = "rejected"; reason = "Duplicate upload detected"; confidence = Math.min(confidence, 30); }
-    else if (!isIncome && !kindMatch && status === "verified") { status = "needs_review"; reason = reason || "Detected document type does not match selected type"; }
-
-    // Income-proof specific handling
+    // Extracted fields come from the OCR pass only.
     let extracted_amount: number | null = null;
     let extracted_date: string | null = null;
     let extracted_employer: string | null = null;
     let extracted_txn_ref: string | null = null;
     if (isIncome) {
-      const rawAmount = typeof aiJson.amount === "number" ? aiJson.amount : Number(aiJson.amount ?? NaN);
+      const rawAmount = typeof ocr.amount === "number" ? ocr.amount : Number(ocr.amount ?? NaN);
       extracted_amount = Number.isFinite(rawAmount) && rawAmount > 0 ? Math.round(rawAmount * 100) / 100 : null;
-      const rawDate = typeof aiJson.payment_date === "string" ? aiJson.payment_date : null;
+      const rawDate = typeof ocr.payment_date === "string" ? ocr.payment_date : null;
       extracted_date = rawDate && /^\d{4}-\d{2}-\d{2}/.test(rawDate) ? rawDate.slice(0, 10) : null;
-      extracted_employer = aiJson.employer_or_platform ?? null;
-      extracted_txn_ref = aiJson.transaction_ref ?? null;
-      if (status !== "rejected") {
-        if (extracted_amount) {
-          // Genuine, readable earnings proof: layout/logo/format differences never block verification.
-          status = "verified";
-          confidence = Math.max(confidence, 75);
-          reason = `Earnings verified · ₹${extracted_amount.toLocaleString("en-IN")}${extracted_employer ? ` from ${extracted_employer}` : ""}${extracted_date ? ` on ${extracted_date}` : ""}`;
-        } else {
-          status = "needs_review";
-          reason = reason || "Could not extract a payment amount from the document";
-        }
-      }
+      extracted_employer = ocr.employer_or_platform ?? auth.platform_identified ?? null;
+      extracted_txn_ref = ocr.transaction_ref ?? null;
     }
+
+    const downgrade = (why: string) => {
+      if (status !== "rejected") status = "needs_review";
+      reason = reason ? `${why} · ${reason}` : why;
+    };
+
+    // Hard gates — a document can only stay "verified" if every one of these holds.
+    if (ocr.legible === false) { status = "rejected"; reason = "Document is blank or unreadable"; confidence = Math.min(confidence, 20); }
+    if (duplicate) { status = "rejected"; reason = "Duplicate upload detected"; confidence = Math.min(confidence, 20); }
+    if (status === "verified") {
+      if (tampering.length) { status = "rejected"; reason = `Tampering detected: ${tampering.join("; ")}`.slice(0, 500); confidence = Math.min(confidence, 40); }
+      else if (aiLikelihood >= 60) { status = "rejected"; reason = "Document appears artificially generated or manually created"; confidence = Math.min(confidence, 40); }
+      else if (auth.is_official_statement === false) downgrade("Does not look like an official issuer-generated statement");
+      else if (auth.data_plausible === false) downgrade("Values on the document are not plausible");
+      else if (auth.branding_ok === false) downgrade("Expected issuer branding or layout is missing");
+      else if (auth.required_fields_ok === false) downgrade(`Required fields missing${missing.length ? `: ${missing.join(", ")}` : ""}`);
+      else if (isIncome && auth.platform_matches_claim === false) downgrade("Platform on the document does not match the declared income source");
+      else if (isIncome && !extracted_amount) downgrade("No payout amount could be read from the document");
+      else if (!isIncome && !kindMatch) downgrade("Detected document type does not match the selected type");
+      else if (confidence < VERIFY_THRESHOLD) downgrade(`AI confidence ${confidence}% is below the ${VERIFY_THRESHOLD}% threshold required for automatic verification`);
+    }
+
+    if (status === "verified" && isIncome && extracted_amount) {
+      reason = `Authentic earnings statement (${confidence}% confidence) · ₹${extracted_amount.toLocaleString("en-IN")}${extracted_employer ? ` from ${extracted_employer}` : ""}${extracted_date ? ` on ${extracted_date}` : ""}`;
+    }
+    if (!reason) {
+      reason = status === "verified"
+        ? `Verified with ${confidence}% authenticity confidence`
+        : status === "rejected"
+          ? "Document could not be authenticated"
+          : "Sent for manual review — authenticity could not be confirmed automatically";
+    }
+    reason = reason.slice(0, 500);
 
     await supabase.from("documents").update({
       ocr_status: "done", status,
