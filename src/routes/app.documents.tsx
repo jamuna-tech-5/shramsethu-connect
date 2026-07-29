@@ -338,7 +338,7 @@ function StatusPill({ status, confidence, running }: { status: string; confidenc
   );
   if (status === "rejected") return (
     <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-1 text-[11px] font-medium text-rose-700">
-      <XCircle className="h-3 w-3" /> Rejected
+      <XCircle className="h-3 w-3" /> Rejected{confidence != null && ` · ${confidence}%`}
     </span>
   );
   return (
