@@ -174,56 +174,117 @@ export const analyzeDocument = createServerFn({ method: "POST" })
     }
 
     const isIncome = !!doc.is_income_proof;
-    const prompt = isIncome
-      ? `You are an earnings-proof verification agent. The worker claims income from "${doc.income_source ?? "unknown"}" with a "${doc.income_frequency ?? "unknown"}" frequency. Analyse the uploaded document (${String(doc.kind).replace(/_/g, " ")}) and return STRICT JSON with keys:
-{"extracted_text": string,
- "detected_type": string,
- "quality_ok": boolean,
- "issues": string[],
- "confidence": number (0-100),
- "status": "verified"|"needs_review"|"rejected",
- "reason": string,
- "amount": number|null,
+    const kindLabel = String(doc.kind).replace(/_/g, " ");
+    const attachment = { mime, b64, filename: (doc.file_name as string) ?? "document" };
+
+    // ---- STAGE 1: OCR — extraction ONLY, no verdict ----
+    const ocrPrompt = `You are an OCR extraction engine. Do NOT judge authenticity. Transcribe the attached ${kindLabel} document faithfully and extract its fields.
+Return STRICT JSON only:
+{"extracted_text": string (full verbatim text, preserve line breaks),
+ "detected_type": string (what kind of document this appears to be),
+ "legible": boolean (false if blank/unreadable/corrupted),
+ "amount": number|null (net earnings / net pay / total received, plain number, no symbols or commas),
  "currency": string|null,
- "payment_date": string|null,
+ "payment_date": string|null (ISO YYYY-MM-DD),
+ "period_start": string|null, "period_end": string|null,
  "employer_or_platform": string|null,
+ "worker_name": string|null,
  "transaction_ref": string|null,
  "frequency_detected": "daily"|"weekly"|"monthly"|null,
- "source_matches_claim": boolean}
-Rules:
-- BE PERMISSIVE about layout. Gig platforms (Zomato, Swiggy, Uber, Ola, Rapido, Amazon Flex, Blinkit, Zepto, employers, banks) all use different templates, logos, fonts, spacing, languages and column orders. NEVER downgrade a document because of an unfamiliar layout, missing logo, screenshot format, different font, or unusual wording.
-- verified: the document is readable AND contains an earnings/payout amount. Treat it as genuine unless there is concrete evidence of tampering. A worker name, platform/employer name, payout date or transaction details strengthen it but only the readable amount is mandatory; infer the platform from the claim when the document does not print it.
-- needs_review: ONLY when the file is partially readable and you genuinely cannot decide (e.g. amount is ambiguous between multiple candidates).
-- rejected: unreadable, blank, obviously fabricated/edited (mismatched fonts within a field, visible digit tampering, template placeholder text like "Lorem ipsum"/"sample"), or clearly a different document type (ID card, selfie, random photo) with no earnings information.
-- source_matches_claim: set true unless the document clearly shows a DIFFERENT real platform/employer than claimed. Absence of a platform name is NOT a mismatch.
-- amount MUST be a plain number (no currency symbols, no commas). If multiple amounts appear, pick the net earnings / net pay / total received amount.
-- payment_date: ISO YYYY-MM-DD when possible.
-Respond with JSON only.`
-      : `You are a document verification assistant. Analyse the provided ${String(doc.kind).replace(/_/g, " ")} document and return STRICT JSON with keys: {"extracted_text": string, "detected_type": string, "quality_ok": boolean, "issues": string[], "confidence": number (0-100), "status": "verified"|"needs_review"|"rejected", "reason": string}. Rules: verified only if readable, right document type, mandatory fields present, no blur/crop/rotation problems. needs_review if partially readable or missing some fields. rejected if unreadable, wrong document, corrupted, or blank. Respond with JSON only.`;
+ "present_sections": string[] (field/section headings actually present, e.g. "trip count","incentives","TDS","payout id","GSTIN","support URL")}
+JSON only.`;
 
-    let aiJson: {
-      extracted_text?: string; detected_type?: string; quality_ok?: boolean;
-      issues?: string[]; confidence?: number; status?: string; reason?: string;
+    type OcrJson = {
+      extracted_text?: string; detected_type?: string; legible?: boolean;
       amount?: number | null; currency?: string | null; payment_date?: string | null;
-      employer_or_platform?: string | null; transaction_ref?: string | null;
+      period_start?: string | null; period_end?: string | null;
+      employer_or_platform?: string | null; worker_name?: string | null;
+      transaction_ref?: string | null;
       frequency_detected?: "daily" | "weekly" | "monthly" | null;
-      source_matches_claim?: boolean;
-    } = {};
+      present_sections?: string[];
+    };
+    let ocr: OcrJson = {};
     let ocrText = "";
     try {
-      const raw = await aiPrompt({
-        prompt,
-        json: true,
-        attachment: { mime, b64, filename: (doc.file_name as string) ?? "document" },
-      });
-      aiJson = parseJsonLoose(raw, {} as typeof aiJson);
-      ocrText = String(aiJson.extracted_text ?? "").slice(0, 15000);
+      const raw = await aiPrompt({ prompt: ocrPrompt, json: true, attachment });
+      ocr = parseJsonLoose(raw, {} as OcrJson);
+      ocrText = String(ocr.extracted_text ?? "").slice(0, 15000);
     } catch (e) {
       const reason = e instanceof Error ? e.message : "OCR failed";
-      console.error("[ocr] analyzeDocument failed", { documentId: doc.id, mime, reason });
+      console.error("[ocr] extraction failed", { documentId: doc.id, mime, reason });
       await supabase.from("documents").update({
         ocr_status: "failed", status: "needs_review",
         verification_reason: reason, ai_verified_at: new Date().toISOString(),
+      } as never).eq("id", doc.id);
+      return { status: "needs_review", confidence_score: 0, verification_reason: reason };
+    }
+
+    // ---- STAGE 2: authenticity / forensic audit (separate pass over the same file) ----
+    const authPrompt = isIncome
+      ? `You are a forensic document-fraud examiner reviewing an EARNINGS STATEMENT submitted as proof of income for a loan decision. The worker claims income from "${doc.income_source ?? "unspecified"}" (${doc.income_frequency ?? "unspecified"} frequency).
+
+OCR already extracted this data (use it, but judge the ATTACHED FILE itself):
+${JSON.stringify({
+        detected_type: ocr.detected_type ?? null,
+        amount: ocr.amount ?? null,
+        employer_or_platform: ocr.employer_or_platform ?? null,
+        payment_date: ocr.payment_date ?? null,
+        transaction_ref: ocr.transaction_ref ?? null,
+        present_sections: ocr.present_sections ?? [],
+      }).slice(0, 2000)}
+
+Assess, independently:
+1. Is this an OFFICIAL earnings/payout statement issued by a platform, employer or bank — not a hand-made document, spreadsheet export, Word/Canva mock-up, note, or plain-text file?
+2. Does the platform actually match the content? (Rapido, Uber, Ola, Swiggy, Zomato, Blinkit, Zepto, Amazon Flex, Dunzo, banks, employers each have recognisable statement structures, payout IDs, order/trip breakdowns, GST/TDS lines, support footers.)
+3. Branding & layout: is expected branding, header/footer, logo, statement ID, period, and issuer contact present and consistent with a real statement from that issuer?
+4. Required fields present: worker/partner identity, period or payment date, gross/net breakdown, payout reference.
+5. Tampering signals: inconsistent fonts/kerning/baseline within a line, mismatched anti-aliasing or compression around numbers, misaligned columns, overlapping or repainted digits, cropped-out regions, screenshot-of-a-screenshot artefacts, editor metadata cues.
+6. AI-generated / template signals: placeholder text, implausibly clean synthetic layout, generic wording, invented field names, nonsensical IDs.
+7. Data plausibility: unrealistic amounts for the claimed platform and period, impossible dates, arithmetic that does not add up (line items vs total), round-number fabrication.
+
+Return STRICT JSON only:
+{"is_official_statement": boolean,
+ "platform_identified": string|null,
+ "platform_matches_claim": boolean,
+ "branding_ok": boolean,
+ "required_fields_ok": boolean,
+ "missing_fields": string[],
+ "tampering_signals": string[],
+ "ai_generated_likelihood": number (0-100),
+ "data_plausible": boolean,
+ "authenticity_confidence": number (0-100 — how confident you are the document is GENUINE and unaltered),
+ "verdict": "verified"|"needs_review"|"rejected",
+ "reason": string (one clear sentence a worker can understand, naming the decisive evidence)}
+
+Verdict rules — be strict, this gates real money:
+- "verified" ONLY when it is unmistakably an authentic official statement: authenticity_confidence >= 90, no tampering signals, branding and required fields present, data plausible.
+- "rejected" when there is concrete evidence of forgery, editing, AI generation, a manually typed/self-made document, a non-earnings document, or a blank/unreadable file.
+- "needs_review" for everything else — anything merely unusual, partially legible, unbranded, or that you cannot confidently place.
+Never guess in favour of the worker. JSON only.`
+      : `You are a forensic document-fraud examiner. Judge the ATTACHED ${kindLabel} document for authenticity, not just readability. OCR read: ${JSON.stringify({ detected_type: ocr.detected_type ?? null, legible: ocr.legible ?? null }).slice(0, 500)}.
+Check: correct document type, expected issuing-authority branding and layout, all mandatory fields present, and any tampering / editing / AI-generation / template signals.
+Return STRICT JSON only:
+{"is_official_statement": boolean, "platform_identified": string|null, "platform_matches_claim": true, "branding_ok": boolean, "required_fields_ok": boolean, "missing_fields": string[], "tampering_signals": string[], "ai_generated_likelihood": number (0-100), "data_plausible": boolean, "authenticity_confidence": number (0-100), "verdict": "verified"|"needs_review"|"rejected", "reason": string}
+"verified" only when authenticity_confidence >= 90 with no tampering signals; "rejected" on forgery/editing/wrong document/blank; otherwise "needs_review". JSON only.`;
+
+    type AuthJson = {
+      is_official_statement?: boolean; platform_identified?: string | null;
+      platform_matches_claim?: boolean; branding_ok?: boolean;
+      required_fields_ok?: boolean; missing_fields?: string[];
+      tampering_signals?: string[]; ai_generated_likelihood?: number;
+      data_plausible?: boolean; authenticity_confidence?: number;
+      verdict?: string; reason?: string;
+    };
+    let auth: AuthJson = {};
+    try {
+      const raw = await aiPrompt({ prompt: authPrompt, json: true, attachment });
+      auth = parseJsonLoose(raw, {} as AuthJson);
+    } catch (e) {
+      const reason = `Authenticity check unavailable — sent for manual review (${e instanceof Error ? e.message : "AI error"})`;
+      console.error("[ocr] authenticity pass failed", { documentId: doc.id, mime, reason });
+      await supabase.from("documents").update({
+        ocr_status: "done", status: "needs_review", ocr_text: ocrText || null,
+        verification_reason: reason.slice(0, 500), ai_verified_at: new Date().toISOString(),
       } as never).eq("id", doc.id);
       return { status: "needs_review", confidence_score: 0, verification_reason: reason };
     }
