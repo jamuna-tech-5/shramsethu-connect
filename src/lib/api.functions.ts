@@ -407,11 +407,14 @@ Return STRICT JSON only:
       }
     }
 
-    // Any newly verified document/earnings proof must refresh the GigScore
-    // (and therefore loan eligibility + dashboard) immediately.
-    if (status === "verified") {
-      await supabase.rpc("recompute_gigscore", { _user_id: userId });
+    // Re-verification that no longer passes must withdraw its financial effect:
+    // rejected / manual-review documents never contribute to analytics or GigScore.
+    if (status !== "verified") {
+      await supabase.from("transactions").delete().eq("document_id", doc.id).eq("user_id", userId);
     }
+
+    // Refresh GigScore (and therefore loan eligibility + dashboard) after any verdict change.
+    await supabase.rpc("recompute_gigscore", { _user_id: userId });
 
     return { status, confidence_score: confidence, verification_reason: reason };
   });
