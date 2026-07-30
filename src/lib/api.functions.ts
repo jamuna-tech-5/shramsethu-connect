@@ -894,36 +894,62 @@ async function overpassNearby(lat: number, lng: number, includedType: string, ra
   }));
 }
 
+// Straight-line fallback so distance/ETA still render when the Routes API is
+// unavailable on a deployment (no server key, restricted key, or outage).
+function haversineEstimate(o: { lat: number; lng: number }, d: { lat: number; lng: number }) {
+  const R = 6371000;
+  const toRad = (v: number) => (v * Math.PI) / 180;
+  const dLat = toRad(d.lat - o.lat);
+  const dLng = toRad(d.lng - o.lng);
+  const a =
+    Math.sin(dLat / 2) ** 2 + Math.cos(toRad(o.lat)) * Math.cos(toRad(d.lat)) * Math.sin(dLng / 2) ** 2;
+  const meters = Math.round(2 * R * Math.asin(Math.sqrt(a)) * 1.3); // road-factor
+  return {
+    durationSeconds: Math.round(meters / 8.3), // ~30 km/h urban average
+    distanceMeters: meters,
+    polyline: null as string | null,
+    estimated: true as const,
+  };
+}
+
 // ---------- Maps: routes/directions ----------
 export const computeRoute = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((v: { origin: { lat: number; lng: number }; destination: { lat: number; lng: number } }) => v)
   .handler(async ({ data }) => {
     const req = mapsRequest("routes");
-    if (!req) throw new Error("Directions are not configured on this deployment. Add GOOGLE_MAPS_SERVER_KEY to your hosting environment variables.");
-    const res = await fetch(req.url, {
-      method: "POST",
-      headers: {
-        ...req.headers,
-        "X-Goog-FieldMask": "routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline",
-      },
-      body: JSON.stringify({
-        origin: { location: { latLng: { latitude: data.origin.lat, longitude: data.origin.lng } } },
-        destination: { location: { latLng: { latitude: data.destination.lat, longitude: data.destination.lng } } },
-        travelMode: "DRIVE",
-      }),
-    });
-    if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`Routes error [${res.status}]: ${body.slice(0, 200)}`);
+    if (!req) return haversineEstimate(data.origin, data.destination);
+    try {
+      const res = await fetch(req.url, {
+        method: "POST",
+        headers: {
+          ...req.headers,
+          "X-Goog-FieldMask": "routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline",
+        },
+        body: JSON.stringify({
+          origin: { location: { latLng: { latitude: data.origin.lat, longitude: data.origin.lng } } },
+          destination: { location: { latLng: { latitude: data.destination.lat, longitude: data.destination.lng } } },
+          travelMode: "DRIVE",
+        }),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!res.ok) {
+        console.error("[routes] Google Routes failed", res.status, (await res.text()).slice(0, 200));
+        return haversineEstimate(data.origin, data.destination);
+      }
+      const json = (await res.json()) as { routes?: Array<{ duration?: string; distanceMeters?: number; polyline?: { encodedPolyline?: string } }> };
+      const r = json.routes?.[0];
+      if (!r) return haversineEstimate(data.origin, data.destination);
+      return {
+        durationSeconds: r.duration ? Number(String(r.duration).replace("s", "")) : null,
+        distanceMeters: r.distanceMeters ?? null,
+        polyline: r.polyline?.encodedPolyline ?? null,
+        estimated: false as const,
+      };
+    } catch (e) {
+      console.error("[routes] request error", e instanceof Error ? e.message : e);
+      return haversineEstimate(data.origin, data.destination);
     }
-    const json = (await res.json()) as { routes?: Array<{ duration?: string; distanceMeters?: number; polyline?: { encodedPolyline?: string } }> };
-    const r = json.routes?.[0];
-    return {
-      durationSeconds: r?.duration ? Number(String(r.duration).replace("s", "")) : null,
-      distanceMeters: r?.distanceMeters ?? null,
-      polyline: r?.polyline?.encodedPolyline ?? null,
-    };
   });
 
 // ---------- Google Maps: nearby places via connector gateway ----------
