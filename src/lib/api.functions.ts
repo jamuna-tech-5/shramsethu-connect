@@ -934,30 +934,35 @@ export const nearbyPlaces = createServerFn({ method: "POST" })
     const radius = data.radiusMeters ?? 8000;
     const req = mapsRequest("places");
     if (!req) return await overpassNearby(data.lat, data.lng, data.includedType, radius);
-    const res = await fetch(req.url, {
-      method: "POST",
-      headers: {
-        ...req.headers,
-        "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount",
-      },
-      body: JSON.stringify({
-        includedTypes: [data.includedType],
-        maxResultCount: 15,
-        locationRestriction: {
-          circle: { center: { latitude: data.lat, longitude: data.lng }, radius },
+    let json: { places?: Array<Record<string, unknown>> } | null = null;
+    try {
+      const res = await fetch(req.url, {
+        method: "POST",
+        headers: {
+          ...req.headers,
+          "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount",
         },
-      }),
-    });
-    if (!res.ok) {
-      const body = await res.text();
-      // Restricted/invalid key in production — degrade to OpenStreetMap instead of failing.
-      if (res.status === 403 || res.status === 400) {
+        body: JSON.stringify({
+          includedTypes: [data.includedType],
+          maxResultCount: 15,
+          locationRestriction: {
+            circle: { center: { latitude: data.lat, longitude: data.lng }, radius },
+          },
+        }),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!res.ok) {
+        // Restricted/invalid/over-quota key in production (403/400/429) or an
+        // upstream outage — degrade to OpenStreetMap instead of failing.
+        console.error("[nearby] Google Places failed", res.status, (await res.text()).slice(0, 200));
         return await overpassNearby(data.lat, data.lng, data.includedType, radius);
       }
-      throw new Error(`Nearby search error [${res.status}]: ${body.slice(0, 300)}`);
+      json = await res.json();
+    } catch (e) {
+      console.error("[nearby] Google Places request error", e instanceof Error ? e.message : e);
+      return await overpassNearby(data.lat, data.lng, data.includedType, radius);
     }
-    const json = (await res.json()) as { places?: Array<Record<string, unknown>> };
-    return (json.places ?? []) as unknown as Array<{
+    const places = (json?.places ?? []) as unknown as Array<{
       id?: string;
       displayName?: { text?: string };
       formattedAddress?: string;
@@ -965,4 +970,13 @@ export const nearbyPlaces = createServerFn({ method: "POST" })
       rating?: number;
       userRatingCount?: number;
     }>;
+    // An empty Google result set should still show OSM results rather than "none found".
+    if (places.length === 0) {
+      try {
+        return await overpassNearby(data.lat, data.lng, data.includedType, radius);
+      } catch {
+        return places;
+      }
+    }
+    return places;
   });
