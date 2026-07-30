@@ -13,6 +13,9 @@ import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 const isVercel = !!process.env.VERCEL;
 
 export default defineConfig({
+  // Note: Vercel's default function timeout (10s on Hobby) can abort the
+  // OCR + forensic AI audit; raise the function max duration in Vercel
+  // project settings if verification stalls on "Needs Review".
   ...(isVercel ? { nitro: { preset: "vercel" } } : {}),
   tanstackStart: {
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).

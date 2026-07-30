@@ -31,6 +31,26 @@ function modelFor(provider: "lovable" | "gemini" | "openai") {
   return process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini";
 }
 
+// Transient upstream failures (429/5xx/network) must not be reported as a
+// verification verdict — retry briefly before giving up.
+async function fetchWithRetry(url: string, init: RequestInit, attempts = 3): Promise<Response> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const res = await fetch(url, { ...init, signal: AbortSignal.timeout(45000) });
+      if (res.status === 429 || res.status >= 500) {
+        lastErr = new Error(`AI error [${res.status}]: ${(await res.text()).slice(0, 200)}`);
+      } else {
+        return res;
+      }
+    } catch (e) {
+      lastErr = e;
+    }
+    if (i < attempts - 1) await new Promise((r) => setTimeout(r, 800 * (i + 1)));
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+}
+
 /**
  * Runs a single-turn prompt (optionally with one image/PDF attachment) and
  * returns the raw model text. `json: true` asks the provider for JSON output.
@@ -51,7 +71,7 @@ export async function aiPrompt(opts: {
     if (opts.attachment) {
       parts.push({ inlineData: { mimeType: opts.attachment.mime, data: opts.attachment.b64 } });
     }
-    const res = await fetch(
+    const res = await fetchWithRetry(
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
       {
         method: "POST",
@@ -102,7 +122,7 @@ export async function aiPrompt(opts: {
   if (opts.system) messages.push({ role: "system", content: opts.system });
   messages.push({ role: "user", content });
 
-  const res = await fetch(url, {
+  const res = await fetchWithRetry(url, {
     method: "POST",
     headers,
     body: JSON.stringify({
