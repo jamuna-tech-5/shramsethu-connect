@@ -7,6 +7,7 @@ export const getMapsBrowserKey = createServerFn({ method: "GET" }).handler(async
   const key =
     process.env.VITE_GOOGLE_MAPS_API_KEY?.trim() ||
     process.env.GOOGLE_MAPS_BROWSER_KEY_PUBLIC?.trim() ||
+    process.env.GOOGLE_MAPS_BROWSER_KEY?.trim() ||
     "";
   return { key: key || null };
 });
