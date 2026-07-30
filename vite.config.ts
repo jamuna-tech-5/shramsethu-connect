@@ -13,17 +13,10 @@ import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 const isVercel = !!process.env.VERCEL;
 
 export default defineConfig({
-  ...(isVercel
-    ? {
-        nitro: {
-          preset: "vercel",
-          // Document OCR + forensic AI audit can take longer than Vercel's
-          // 10s default, which otherwise aborts verification mid-run and
-          // leaves documents stuck on "Needs Review".
-          vercel: { functions: { maxDuration: 60, memory: 1024 } },
-        },
-      }
-    : {}),
+  // Note: Vercel's default function timeout (10s on Hobby) can abort the
+  // OCR + forensic AI audit; raise the function max duration in Vercel
+  // project settings if verification stalls on "Needs Review".
+  ...(isVercel ? { nitro: { preset: "vercel" } } : {}),
   tanstackStart: {
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
     // nitro/vite builds from this
