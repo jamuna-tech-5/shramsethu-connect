@@ -843,6 +843,12 @@ function mapsRequest(pathSuffix: "routes" | "places") {
 }
 
 // OpenStreetMap fallback so nearby search keeps working without any Google key.
+const OVERPASS_ENDPOINTS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+];
+
 async function overpassNearby(lat: number, lng: number, includedType: string, radius: number) {
   const filters: Record<string, string> = {
     gas_station: 'node["amenity"="fuel"]',
@@ -854,15 +860,32 @@ async function overpassNearby(lat: number, lng: number, includedType: string, ra
   };
   const filter = filters[includedType] ?? `node["amenity"="${includedType}"]`;
   const query = `[out:json][timeout:20];${filter}(around:${radius},${lat},${lng});out 15;`;
-  const res = await fetch("https://overpass-api.de/api/interpreter", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: `data=${encodeURIComponent(query)}`,
-  });
-  if (!res.ok) throw new Error(`Nearby search failed [${res.status}]`);
-  const json = (await res.json()) as {
-    elements?: Array<{ id: number; lat: number; lon: number; tags?: Record<string, string> }>;
-  };
+  // Public Overpass mirrors rate-limit aggressively from cloud IPs (Vercel),
+  // so try each mirror before giving up.
+  let json: { elements?: Array<{ id: number; lat: number; lon: number; tags?: Record<string, string> }> } | null = null;
+  let lastError = "";
+  for (const endpoint of OVERPASS_ENDPOINTS) {
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: `data=${encodeURIComponent(query)}`,
+        signal: AbortSignal.timeout(20000),
+      });
+      if (!res.ok) {
+        lastError = `[${res.status}] ${endpoint}`;
+        continue;
+      }
+      json = await res.json();
+      break;
+    } catch (e) {
+      lastError = e instanceof Error ? e.message : String(e);
+    }
+  }
+  if (!json) {
+    console.error("[nearby] all Overpass mirrors failed", lastError);
+    throw new Error("Nearby search is temporarily unavailable. Please try again in a moment.");
+  }
   return (json.elements ?? []).map((e) => ({
     id: String(e.id),
     displayName: { text: e.tags?.name ?? e.tags?.operator ?? "Unnamed place" },
