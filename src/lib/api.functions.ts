@@ -382,6 +382,7 @@ Return STRICT JSON only:
       confidence_score: confidence,
       verification_reason: reason || null,
       ocr_text: ocrText || null,
+      content_hash: contentHash,
       ai_verified_at: new Date().toISOString(),
       extracted_amount,
       extracted_date,
