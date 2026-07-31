@@ -48,6 +48,7 @@ export type Database = {
         Row: {
           ai_verified_at: string | null
           confidence_score: number | null
+          content_hash: string | null
           created_at: string
           document_name: string | null
           extracted_amount: number | null
@@ -76,6 +77,7 @@ export type Database = {
         Insert: {
           ai_verified_at?: string | null
           confidence_score?: number | null
+          content_hash?: string | null
           created_at?: string
           document_name?: string | null
           extracted_amount?: number | null
@@ -104,6 +106,7 @@ export type Database = {
         Update: {
           ai_verified_at?: string | null
           confidence_score?: number | null
+          content_hash?: string | null
           created_at?: string
           document_name?: string | null
           extracted_amount?: number | null

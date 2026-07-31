@@ -164,6 +164,30 @@ export const analyzeDocument = createServerFn({ method: "POST" })
     const b64 = typeof btoa !== "undefined" ? btoa(binary) : Buffer.from(buf).toString("base64");
     const mime = (doc.mime_type as string) || "application/octet-stream";
 
+    // Secure content fingerprint of the actual file bytes (never the filename).
+    let contentHash: string | null = null;
+    try {
+      const digest = await crypto.subtle.digest("SHA-256", buf.slice().buffer as ArrayBuffer);
+      contentHash = Array.from(new Uint8Array(digest))
+        .map((b) => b.toString(16).padStart(2, "0")).join("");
+    } catch {
+      contentHash = null;
+    }
+
+    // Duplicate ONLY when the byte-identical file is already VERIFIED for this same user.
+    let duplicate = false;
+    if (contentHash) {
+      const { data: dup } = await supabase
+        .from("documents")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("content_hash", contentHash)
+        .eq("status", "verified")
+        .neq("id", doc.id)
+        .limit(1);
+      duplicate = !!(dup && dup.length);
+    }
+
     const { aiPrompt, parseJsonLoose, resolveAiProvider, AI_NOT_CONFIGURED_MESSAGE } = await import("@/lib/ai.server");
     if (!resolveAiProvider()) {
       await supabase.from("documents").update({
@@ -289,20 +313,6 @@ Return STRICT JSON only:
       return { status: "needs_review", confidence_score: 0, verification_reason: reason };
     }
 
-    // Duplicate detection (same user, same kind, non-trivial OCR text match)
-    let duplicate = false;
-    if (ocrText && ocrText.length > 40) {
-      const snippet = ocrText.slice(0, 200).replace(/[%_]/g, " ");
-      const { data: dup } = await supabase
-        .from("documents")
-        .select("id")
-        .eq("user_id", userId).eq("kind", doc.kind)
-        .neq("id", doc.id)
-        .ilike("ocr_text", `%${snippet}%`)
-        .limit(1);
-      if (dup && dup.length) duplicate = true;
-    }
-
     // Kind mismatch check via keywords when AI didn't already reject
     const kw = KIND_KEYWORDS[String(doc.kind)] ?? [];
     const kindMatch = kw.length === 0 || kw.some((k) => ocrText.toLowerCase().includes(k));
@@ -372,6 +382,7 @@ Return STRICT JSON only:
       confidence_score: confidence,
       verification_reason: reason || null,
       ocr_text: ocrText || null,
+      content_hash: contentHash,
       ai_verified_at: new Date().toISOString(),
       extracted_amount,
       extracted_date,
