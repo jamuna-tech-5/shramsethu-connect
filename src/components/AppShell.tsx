@@ -37,7 +37,7 @@ const nav: NavItem[] = [
   { to: "/app/income", label: "Income Analytics", icon: BarChart3 },
   { to: "/app/schemes", label: "Government Schemes", icon: Landmark },
   { to: "/app/loan", label: "Loan Eligibility", icon: Wallet },
-  { to: "/app/charging", label: "EV Charging", icon: Battery },
+  { to: "/app/charging", label: "Nearby Services", icon: Battery },
   { to: "/app/location", label: "Live Location", icon: MapPin },
   { to: "/app/documents", label: "Documents", icon: FileCheck2 },
   { to: "/app/sos", label: "Emergency SOS", icon: LifeBuoy },
