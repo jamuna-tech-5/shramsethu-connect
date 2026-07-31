@@ -167,7 +167,7 @@ export const analyzeDocument = createServerFn({ method: "POST" })
     // Secure content fingerprint of the actual file bytes (never the filename).
     let contentHash: string | null = null;
     try {
-      const digest = await crypto.subtle.digest("SHA-256", buf as unknown as ArrayBufferView);
+      const digest = await crypto.subtle.digest("SHA-256", buf.slice().buffer as ArrayBuffer);
       contentHash = Array.from(new Uint8Array(digest))
         .map((b) => b.toString(16).padStart(2, "0")).join("");
     } catch {
@@ -311,20 +311,6 @@ Return STRICT JSON only:
         verification_reason: reason.slice(0, 500), ai_verified_at: new Date().toISOString(),
       } as never).eq("id", doc.id);
       return { status: "needs_review", confidence_score: 0, verification_reason: reason };
-    }
-
-    // Duplicate detection (same user, same kind, non-trivial OCR text match)
-    let duplicate = false;
-    if (ocrText && ocrText.length > 40) {
-      const snippet = ocrText.slice(0, 200).replace(/[%_]/g, " ");
-      const { data: dup } = await supabase
-        .from("documents")
-        .select("id")
-        .eq("user_id", userId).eq("kind", doc.kind)
-        .neq("id", doc.id)
-        .ilike("ocr_text", `%${snippet}%`)
-        .limit(1);
-      if (dup && dup.length) duplicate = true;
     }
 
     // Kind mismatch check via keywords when AI didn't already reject
