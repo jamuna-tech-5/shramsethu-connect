@@ -164,6 +164,30 @@ export const analyzeDocument = createServerFn({ method: "POST" })
     const b64 = typeof btoa !== "undefined" ? btoa(binary) : Buffer.from(buf).toString("base64");
     const mime = (doc.mime_type as string) || "application/octet-stream";
 
+    // Secure content fingerprint of the actual file bytes (never the filename).
+    let contentHash: string | null = null;
+    try {
+      const digest = await crypto.subtle.digest("SHA-256", buf as unknown as ArrayBufferView);
+      contentHash = Array.from(new Uint8Array(digest))
+        .map((b) => b.toString(16).padStart(2, "0")).join("");
+    } catch {
+      contentHash = null;
+    }
+
+    // Duplicate ONLY when the byte-identical file is already VERIFIED for this same user.
+    let duplicate = false;
+    if (contentHash) {
+      const { data: dup } = await supabase
+        .from("documents")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("content_hash", contentHash)
+        .eq("status", "verified")
+        .neq("id", doc.id)
+        .limit(1);
+      duplicate = !!(dup && dup.length);
+    }
+
     const { aiPrompt, parseJsonLoose, resolveAiProvider, AI_NOT_CONFIGURED_MESSAGE } = await import("@/lib/ai.server");
     if (!resolveAiProvider()) {
       await supabase.from("documents").update({
