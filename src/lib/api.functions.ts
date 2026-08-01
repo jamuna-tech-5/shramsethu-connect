@@ -67,7 +67,7 @@ export const recordDocument = createServerFn({ method: "POST" })
   .inputValidator((v: {
     kind: DocKind; document_name?: string; storage_path: string;
     file_name: string; mime_type: string; size_bytes: number;
-    income_source?: string; income_frequency?: "daily" | "weekly" | "monthly";
+    income_source?: string; income_frequency?: "daily" | "weekly" | "monthly" | "yearly";
     is_income_proof?: boolean;
   }) => v)
   .handler(async ({ data, context }) => {
