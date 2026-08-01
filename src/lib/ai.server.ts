@@ -15,14 +15,25 @@ export type AiProviderInfo =
 export const AI_NOT_CONFIGURED_MESSAGE =
   "AI is not configured on this deployment. Add LOVABLE_API_KEY (Lovable AI) or GEMINI_API_KEY or OPENAI_API_KEY to your hosting environment variables and redeploy.";
 
-export function resolveAiProvider(): AiProviderInfo {
+/**
+ * All providers configured on this deployment, in preference order.
+ * Lovable AI first (zero-config inside Lovable), then Gemini
+ * (`GEMINI_API_KEY` — used automatically on Vercel or whenever the Lovable
+ * gateway is missing/unreachable), then OpenAI.
+ */
+export function resolveAiProviders(): NonNullable<AiProviderInfo>[] {
+  const list: NonNullable<AiProviderInfo>[] = [];
   const lovable = process.env.LOVABLE_API_KEY?.trim();
-  if (lovable) return { provider: "lovable", key: lovable };
+  if (lovable) list.push({ provider: "lovable", key: lovable });
   const gemini = (process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY)?.trim();
-  if (gemini) return { provider: "gemini", key: gemini };
+  if (gemini) list.push({ provider: "gemini", key: gemini });
   const openai = process.env.OPENAI_API_KEY?.trim();
-  if (openai) return { provider: "openai", key: openai };
-  return null;
+  if (openai) list.push({ provider: "openai", key: openai });
+  return list;
+}
+
+export function resolveAiProvider(): AiProviderInfo {
+  return resolveAiProviders()[0] ?? null;
 }
 
 function modelFor(provider: "lovable" | "gemini" | "openai") {
@@ -61,8 +72,24 @@ export async function aiPrompt(opts: {
   json?: boolean;
   system?: string;
 }): Promise<string> {
-  const resolved = resolveAiProvider();
-  if (!resolved) throw new Error(AI_NOT_CONFIGURED_MESSAGE);
+  const providers = resolveAiProviders();
+  if (providers.length === 0) throw new Error(AI_NOT_CONFIGURED_MESSAGE);
+  let lastErr: unknown;
+  for (const p of providers) {
+    try {
+      return await aiPromptWith(p, opts);
+    } catch (e) {
+      lastErr = e;
+      console.error(`[ai] provider "${p.provider}" failed, trying next`, e instanceof Error ? e.message : e);
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+}
+
+async function aiPromptWith(
+  resolved: NonNullable<AiProviderInfo>,
+  opts: { prompt: string; attachment?: AiAttachment; json?: boolean; system?: string },
+): Promise<string> {
   const { provider, key } = resolved;
   const model = modelFor(provider);
 
