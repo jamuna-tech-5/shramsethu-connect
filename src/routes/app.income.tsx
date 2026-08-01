@@ -30,11 +30,12 @@ export const Route = createFileRoute("/app/income")({
 });
 
 const SOURCES = [
-  "Zomato","Swiggy","Uber","Ola","Rapido","Amazon Flex","Flipkart","Blinkit","Zepto",
+  "Rapido","Ola","Uber","Namma Yatri","Swiggy","Zomato","Porter",
+  "Amazon Flex","Flipkart","Blinkit","Zepto","Dunzo",
   "Construction Work","Daily Wage","Freelancing","Agriculture","Self Employed","Other",
 ] as const;
 type IncomeSource = typeof SOURCES[number];
-type Frequency = "daily" | "weekly" | "monthly";
+type Frequency = "daily" | "weekly" | "monthly" | "yearly";
 
 const PROOF_KINDS: { value: DocKind; label: string }[] = [
   { value: "salary_slip", label: "Salary Slip" },
@@ -348,6 +349,7 @@ function UploadEarningsDialog({ onSaved }: { onSaved: () => void }) {
                 <SelectItem value="daily">Daily</SelectItem>
                 <SelectItem value="weekly">Weekly</SelectItem>
                 <SelectItem value="monthly">Monthly</SelectItem>
+                <SelectItem value="yearly">Yearly</SelectItem>
               </SelectContent>
             </Select>
           </div>
