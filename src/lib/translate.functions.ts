@@ -23,7 +23,7 @@ export const translateBatch = createServerFn({ method: "POST" })
     const system = `You are a professional UI localizer. Translate each string in the provided JSON array from English to ${target}.
 Rules:
 - Return ONLY a valid JSON array of strings, same length, same order as input. No prose, no code fences.
-- Preserve punctuation, emoji, numbers, currency (₹), URLs, e-mails, brand names (ShramSethu, GigScore, Aadhaar, PAN, Zomato, Swiggy, Uber, Google, SOS), and placeholders like {name}, %s, %d, $1.
+- Preserve punctuation, emoji, numbers, currency (₹), URLs, e-mails, brand names (ShramSethu, GigScore, Aadhaar, PAN, Zomato, Swiggy, Uber, Ola, Rapido, Namma Yatri, Porter, Google, SOS), and placeholders like {name}, %s, %d, $1.
 - Keep translations short and natural for buttons/labels; do not add explanations.
 - If a string is a brand/proper noun or empty, keep it unchanged.`;
 
