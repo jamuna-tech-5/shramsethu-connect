@@ -202,29 +202,36 @@ export const analyzeDocument = createServerFn({ method: "POST" })
     const attachment = { mime, b64, filename: (doc.file_name as string) ?? "document" };
 
     // ---- STAGE 1: OCR — extraction ONLY, no verdict ----
-    const ocrPrompt = `You are an OCR extraction engine. Do NOT judge authenticity. Transcribe the attached ${kindLabel} document faithfully and extract its fields.
+    const ocrPrompt = `You are an OCR extraction engine. Do NOT judge authenticity. Transcribe the attached ${kindLabel} document or app screenshot faithfully and extract whatever fields are visible. Missing fields are normal — return null for them, never invent values.
 Return STRICT JSON only:
 {"extracted_text": string (full verbatim text, preserve line breaks),
  "detected_type": string (what kind of document this appears to be),
  "legible": boolean (false if blank/unreadable/corrupted),
- "amount": number|null (net earnings / net pay / total received, plain number, no symbols or commas),
+ "amount": number|null (earnings / total earnings / ride earnings / net pay / amount received, plain number, no symbols or commas),
+ "total_earnings": number|null,
+ "bonus": number|null,
+ "incentives": number|null,
+ "wallet_balance": number|null,
+ "ride_count": number|null (rides / trips / orders completed),
  "currency": string|null,
  "payment_date": string|null (ISO YYYY-MM-DD),
  "period_start": string|null, "period_end": string|null,
- "employer_or_platform": string|null,
+ "employer_or_platform": string|null (e.g. Rapido, Ola, Uber, Namma Yatri, Swiggy, Zomato, Porter, employer or bank name),
  "worker_name": string|null,
  "transaction_ref": string|null,
- "frequency_detected": "daily"|"weekly"|"monthly"|null,
- "present_sections": string[] (field/section headings actually present, e.g. "trip count","incentives","TDS","payout id","GSTIN","support URL")}
+ "frequency_detected": "daily"|"weekly"|"monthly"|"yearly"|null,
+ "present_sections": string[] (field/section headings actually present, e.g. "today's earnings","trip history","incentives","orders completed","wallet balance","payout id")}
 JSON only.`;
 
     type OcrJson = {
       extracted_text?: string; detected_type?: string; legible?: boolean;
       amount?: number | null; currency?: string | null; payment_date?: string | null;
+      total_earnings?: number | null; bonus?: number | null; incentives?: number | null;
+      wallet_balance?: number | null; ride_count?: number | null;
       period_start?: string | null; period_end?: string | null;
       employer_or_platform?: string | null; worker_name?: string | null;
       transaction_ref?: string | null;
-      frequency_detected?: "daily" | "weekly" | "monthly" | null;
+      frequency_detected?: "daily" | "weekly" | "monthly" | "yearly" | null;
       present_sections?: string[];
     };
     let ocr: OcrJson = {};
