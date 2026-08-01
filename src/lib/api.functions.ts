@@ -67,7 +67,7 @@ export const recordDocument = createServerFn({ method: "POST" })
   .inputValidator((v: {
     kind: DocKind; document_name?: string; storage_path: string;
     file_name: string; mime_type: string; size_bytes: number;
-    income_source?: string; income_frequency?: "daily" | "weekly" | "monthly";
+    income_source?: string; income_frequency?: "daily" | "weekly" | "monthly" | "yearly";
     is_income_proof?: boolean;
   }) => v)
   .handler(async ({ data, context }) => {
@@ -202,29 +202,36 @@ export const analyzeDocument = createServerFn({ method: "POST" })
     const attachment = { mime, b64, filename: (doc.file_name as string) ?? "document" };
 
     // ---- STAGE 1: OCR — extraction ONLY, no verdict ----
-    const ocrPrompt = `You are an OCR extraction engine. Do NOT judge authenticity. Transcribe the attached ${kindLabel} document faithfully and extract its fields.
+    const ocrPrompt = `You are an OCR extraction engine. Do NOT judge authenticity. Transcribe the attached ${kindLabel} document or app screenshot faithfully and extract whatever fields are visible. Missing fields are normal — return null for them, never invent values.
 Return STRICT JSON only:
 {"extracted_text": string (full verbatim text, preserve line breaks),
  "detected_type": string (what kind of document this appears to be),
  "legible": boolean (false if blank/unreadable/corrupted),
- "amount": number|null (net earnings / net pay / total received, plain number, no symbols or commas),
+ "amount": number|null (earnings / total earnings / ride earnings / net pay / amount received, plain number, no symbols or commas),
+ "total_earnings": number|null,
+ "bonus": number|null,
+ "incentives": number|null,
+ "wallet_balance": number|null,
+ "ride_count": number|null (rides / trips / orders completed),
  "currency": string|null,
  "payment_date": string|null (ISO YYYY-MM-DD),
  "period_start": string|null, "period_end": string|null,
- "employer_or_platform": string|null,
+ "employer_or_platform": string|null (e.g. Rapido, Ola, Uber, Namma Yatri, Swiggy, Zomato, Porter, employer or bank name),
  "worker_name": string|null,
  "transaction_ref": string|null,
- "frequency_detected": "daily"|"weekly"|"monthly"|null,
- "present_sections": string[] (field/section headings actually present, e.g. "trip count","incentives","TDS","payout id","GSTIN","support URL")}
+ "frequency_detected": "daily"|"weekly"|"monthly"|"yearly"|null,
+ "present_sections": string[] (field/section headings actually present, e.g. "today's earnings","trip history","incentives","orders completed","wallet balance","payout id")}
 JSON only.`;
 
     type OcrJson = {
       extracted_text?: string; detected_type?: string; legible?: boolean;
       amount?: number | null; currency?: string | null; payment_date?: string | null;
+      total_earnings?: number | null; bonus?: number | null; incentives?: number | null;
+      wallet_balance?: number | null; ride_count?: number | null;
       period_start?: string | null; period_end?: string | null;
       employer_or_platform?: string | null; worker_name?: string | null;
       transaction_ref?: string | null;
-      frequency_detected?: "daily" | "weekly" | "monthly" | null;
+      frequency_detected?: "daily" | "weekly" | "monthly" | "yearly" | null;
       present_sections?: string[];
     };
     let ocr: OcrJson = {};
@@ -245,46 +252,58 @@ JSON only.`;
 
     // ---- STAGE 2: authenticity / forensic audit (separate pass over the same file) ----
     const authPrompt = isIncome
-      ? `You are a forensic document-fraud examiner reviewing an EARNINGS STATEMENT submitted as proof of income for a loan decision. The worker claims income from "${doc.income_source ?? "unspecified"}" (${doc.income_frequency ?? "unspecified"} frequency).
+      ? `You are verifying EARNINGS EVIDENCE submitted by an Indian gig worker as proof of income. The worker claims income from "${doc.income_source ?? "unspecified"}" (${doc.income_frequency ?? "unspecified"} frequency).
 
 OCR already extracted this data (use it, but judge the ATTACHED FILE itself):
 ${JSON.stringify({
         detected_type: ocr.detected_type ?? null,
         amount: ocr.amount ?? null,
+        total_earnings: ocr.total_earnings ?? null,
+        ride_count: ocr.ride_count ?? null,
         employer_or_platform: ocr.employer_or_platform ?? null,
         payment_date: ocr.payment_date ?? null,
         transaction_ref: ocr.transaction_ref ?? null,
         present_sections: ocr.present_sections ?? [],
       }).slice(0, 2000)}
 
-Assess, independently:
-1. Is this an OFFICIAL earnings/payout statement issued by a platform, employer or bank — not a hand-made document, spreadsheet export, Word/Canva mock-up, note, or plain-text file?
-2. Does the platform actually match the content? (Rapido, Uber, Ola, Swiggy, Zomato, Blinkit, Zepto, Amazon Flex, Dunzo, banks, employers each have recognisable statement structures, payout IDs, order/trip breakdowns, GST/TDS lines, support footers.)
-3. Branding & layout: is expected branding, header/footer, logo, statement ID, period, and issuer contact present and consistent with a real statement from that issuer?
-4. Required fields present: worker/partner identity, period or payment date, gross/net breakdown, payout reference.
-5. Tampering signals: inconsistent fonts/kerning/baseline within a line, mismatched anti-aliasing or compression around numbers, misaligned columns, overlapping or repainted digits, cropped-out regions, screenshot-of-a-screenshot artefacts, editor metadata cues.
-6. AI-generated / template signals: placeholder text, implausibly clean synthetic layout, generic wording, invented field names, nonsensical IDs.
-7. Data plausibility: unrealistic amounts for the claimed platform and period, impossible dates, arithmetic that does not add up (line items vs total), round-number fabrication.
+IMPORTANT — IN-APP SCREENSHOTS ARE VALID EVIDENCE.
+Gig platforms (Rapido, Ola, Uber, Namma Yatri, Swiggy, Zomato, Porter, Dunzo, Blinkit, Zepto, Amazon Flex, Flipkart) show earnings inside their partner/driver apps. A screenshot of such an app IS acceptable proof. An official salary slip or payout statement is NOT required.
+
+Treat as valid evidence any readable screenshot/document from a recognised gig platform (or an employer/bank) that shows earnings information such as: earnings amount, total earnings, ride earnings, trip history, ride/trip count, orders completed, weekly or monthly earnings, incentives, bonus, wallet balance or driver statistics.
+
+Do NOT lower confidence or reject merely because:
+- it is a mobile screenshot rather than a PDF or official statement,
+- worker/partner identity is not shown,
+- pickup location, drop location or destination is not shown,
+- payout reference, transaction ID, statement ID, GST/TDS lines or issuer footer are missing,
+- only a summary total is shown without a line-item breakdown.
+Many platforms legitimately hide these details while still showing genuine earnings.
+
+Assess:
+1. Platform recognition: does the UI, branding, colours, iconography, wording and layout match a real gig-platform app (or an employer/bank document)?
+2. Earnings readability: is at least one earnings figure or earnings statistic clearly readable?
+3. Manipulation signals ONLY (be evidence-based, not suspicion-based): edited/repainted digits, inconsistent fonts or baselines within a number, cloned regions, obviously fabricated or mocked-up screen, placeholder text.
+4. Data plausibility: impossible dates or wildly implausible amounts for the claimed platform and period.
 
 Return STRICT JSON only:
-{"is_official_statement": boolean,
+{"is_official_statement": boolean (true also for a genuine in-app earnings screen),
  "platform_identified": string|null,
- "platform_matches_claim": boolean,
+ "platform_matches_claim": boolean (true unless the visible platform clearly contradicts the claim),
  "branding_ok": boolean,
- "required_fields_ok": boolean,
- "missing_fields": string[],
+ "required_fields_ok": boolean (true whenever readable earnings information is present),
+ "missing_fields": string[] (informational only),
  "tampering_signals": string[],
  "ai_generated_likelihood": number (0-100),
  "data_plausible": boolean,
- "authenticity_confidence": number (0-100 — how confident you are the document is GENUINE and unaltered),
+ "authenticity_confidence": number (0-100 — how confident you are this is GENUINE, unaltered gig-earnings evidence),
  "verdict": "verified"|"needs_review"|"rejected",
  "reason": string (one clear sentence a worker can understand, naming the decisive evidence)}
 
-Verdict rules — be strict, this gates real money:
-- "verified" ONLY when it is unmistakably an authentic official statement: authenticity_confidence >= 90, no tampering signals, branding and required fields present, data plausible.
-- "rejected" when there is concrete evidence of forgery, editing, AI generation, a manually typed/self-made document, a non-earnings document, or a blank/unreadable file.
-- "needs_review" for everything else — anything merely unusual, partially legible, unbranded, or that you cannot confidently place.
-Never guess in favour of the worker. JSON only.`
+Scoring rules:
+- A readable screenshot/document from a recognised gig platform showing genuine earnings information should normally score ABOVE 70 and get verdict "verified".
+- "needs_review" (50-69) when the platform or the earnings figure is only partly legible or you cannot place the source.
+- "rejected" (<50) ONLY when: the image is unreadable/blank, no earnings information is visible at all, the content is unrelated to gig work or employment income, or there is concrete evidence of manipulation/fabrication.
+JSON only.`
       : `You are a forensic document-fraud examiner. Judge the ATTACHED ${kindLabel} document for authenticity, not just readability. OCR read: ${JSON.stringify({ detected_type: ocr.detected_type ?? null, legible: ocr.legible ?? null }).slice(0, 500)}.
 Check: correct document type, expected issuing-authority branding and layout, all mandatory fields present, and any tampering / editing / AI-generation / template signals.
 Return STRICT JSON only:
@@ -318,7 +337,9 @@ Return STRICT JSON only:
     const kindMatch = kw.length === 0 || kw.some((k) => ocrText.toLowerCase().includes(k));
 
     // ---- Decision: authenticity pass drives the verdict; OCR never verifies on its own ----
-    const VERIFY_THRESHOLD = 90;
+    // Gig-earnings evidence uses the 70/50 confidence bands; identity documents stay strict.
+    const VERIFY_THRESHOLD = isIncome ? 70 : 90;
+    const REVIEW_FLOOR = 50;
     let confidence = Math.max(0, Math.min(100, Math.round(Number(auth.authenticity_confidence ?? 0))));
     const tampering = (auth.tampering_signals ?? []).filter(Boolean);
     const missing = (auth.missing_fields ?? []).filter(Boolean);
@@ -336,7 +357,10 @@ Return STRICT JSON only:
     let extracted_employer: string | null = null;
     let extracted_txn_ref: string | null = null;
     if (isIncome) {
-      const rawAmount = typeof ocr.amount === "number" ? ocr.amount : Number(ocr.amount ?? NaN);
+      const amountCandidate = [ocr.amount, ocr.total_earnings].find(
+        (v) => v != null && Number.isFinite(Number(v)) && Number(v) > 0,
+      );
+      const rawAmount = Number(amountCandidate ?? NaN);
       extracted_amount = Number.isFinite(rawAmount) && rawAmount > 0 ? Math.round(rawAmount * 100) / 100 : null;
       const rawDate = typeof ocr.payment_date === "string" ? ocr.payment_date : null;
       extracted_date = rawDate && /^\d{4}-\d{2}-\d{2}/.test(rawDate) ? rawDate.slice(0, 10) : null;
@@ -352,16 +376,26 @@ Return STRICT JSON only:
     // Hard gates — a document can only stay "verified" if every one of these holds.
     if (ocr.legible === false) { status = "rejected"; reason = "Document is blank or unreadable"; confidence = Math.min(confidence, 20); }
     if (duplicate) { status = "rejected"; reason = "Duplicate upload detected"; confidence = Math.min(confidence, 20); }
-    if (status === "verified") {
+    if (status !== "rejected" && confidence > 0 && confidence < REVIEW_FLOOR) {
+      status = "rejected";
+      reason = reason || `AI confidence ${confidence}% is too low to accept this document`;
+    }
+    if (status === "verified" && isIncome) {
+      if (tampering.length) { status = "rejected"; reason = `Tampering detected: ${tampering.join("; ")}`.slice(0, 500); confidence = Math.min(confidence, 40); }
+      else if (aiLikelihood >= 80) { status = "rejected"; reason = "Document appears artificially generated or fabricated"; confidence = Math.min(confidence, 40); }
+      else if (auth.data_plausible === false) downgrade("Values on the document are not plausible");
+      else if (!extracted_amount && !ocr.ride_count && ocr.bonus == null && ocr.incentives == null && ocr.wallet_balance == null) {
+        downgrade("No earnings information could be read from the document");
+      }
+      else if (confidence < VERIFY_THRESHOLD) downgrade(`AI confidence ${confidence}% is below the ${VERIFY_THRESHOLD}% threshold required for automatic verification`);
+    } else if (status === "verified") {
       if (tampering.length) { status = "rejected"; reason = `Tampering detected: ${tampering.join("; ")}`.slice(0, 500); confidence = Math.min(confidence, 40); }
       else if (aiLikelihood >= 60) { status = "rejected"; reason = "Document appears artificially generated or manually created"; confidence = Math.min(confidence, 40); }
       else if (auth.is_official_statement === false) downgrade("Does not look like an official issuer-generated statement");
       else if (auth.data_plausible === false) downgrade("Values on the document are not plausible");
       else if (auth.branding_ok === false) downgrade("Expected issuer branding or layout is missing");
       else if (auth.required_fields_ok === false) downgrade(`Required fields missing${missing.length ? `: ${missing.join(", ")}` : ""}`);
-      else if (isIncome && auth.platform_matches_claim === false) downgrade("Platform on the document does not match the declared income source");
-      else if (isIncome && !extracted_amount) downgrade("No payout amount could be read from the document");
-      else if (!isIncome && !kindMatch) downgrade("Detected document type does not match the selected type");
+      else if (!kindMatch) downgrade("Detected document type does not match the selected type");
       else if (confidence < VERIFY_THRESHOLD) downgrade(`AI confidence ${confidence}% is below the ${VERIFY_THRESHOLD}% threshold required for automatic verification`);
     }
 
