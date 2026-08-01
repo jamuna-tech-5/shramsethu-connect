@@ -337,7 +337,9 @@ Return STRICT JSON only:
     const kindMatch = kw.length === 0 || kw.some((k) => ocrText.toLowerCase().includes(k));
 
     // ---- Decision: authenticity pass drives the verdict; OCR never verifies on its own ----
-    const VERIFY_THRESHOLD = 90;
+    // Gig-earnings evidence uses the 70/50 confidence bands; identity documents stay strict.
+    const VERIFY_THRESHOLD = isIncome ? 70 : 90;
+    const REVIEW_FLOOR = 50;
     let confidence = Math.max(0, Math.min(100, Math.round(Number(auth.authenticity_confidence ?? 0))));
     const tampering = (auth.tampering_signals ?? []).filter(Boolean);
     const missing = (auth.missing_fields ?? []).filter(Boolean);
@@ -355,7 +357,10 @@ Return STRICT JSON only:
     let extracted_employer: string | null = null;
     let extracted_txn_ref: string | null = null;
     if (isIncome) {
-      const rawAmount = typeof ocr.amount === "number" ? ocr.amount : Number(ocr.amount ?? NaN);
+      const amountCandidate = [ocr.amount, ocr.total_earnings].find(
+        (v) => v != null && Number.isFinite(Number(v)) && Number(v) > 0,
+      );
+      const rawAmount = Number(amountCandidate ?? NaN);
       extracted_amount = Number.isFinite(rawAmount) && rawAmount > 0 ? Math.round(rawAmount * 100) / 100 : null;
       const rawDate = typeof ocr.payment_date === "string" ? ocr.payment_date : null;
       extracted_date = rawDate && /^\d{4}-\d{2}-\d{2}/.test(rawDate) ? rawDate.slice(0, 10) : null;
@@ -371,16 +376,26 @@ Return STRICT JSON only:
     // Hard gates — a document can only stay "verified" if every one of these holds.
     if (ocr.legible === false) { status = "rejected"; reason = "Document is blank or unreadable"; confidence = Math.min(confidence, 20); }
     if (duplicate) { status = "rejected"; reason = "Duplicate upload detected"; confidence = Math.min(confidence, 20); }
-    if (status === "verified") {
+    if (status !== "rejected" && confidence > 0 && confidence < REVIEW_FLOOR) {
+      status = "rejected";
+      reason = reason || `AI confidence ${confidence}% is too low to accept this document`;
+    }
+    if (status === "verified" && isIncome) {
+      if (tampering.length) { status = "rejected"; reason = `Tampering detected: ${tampering.join("; ")}`.slice(0, 500); confidence = Math.min(confidence, 40); }
+      else if (aiLikelihood >= 80) { status = "rejected"; reason = "Document appears artificially generated or fabricated"; confidence = Math.min(confidence, 40); }
+      else if (auth.data_plausible === false) downgrade("Values on the document are not plausible");
+      else if (!extracted_amount && !ocr.ride_count && ocr.bonus == null && ocr.incentives == null && ocr.wallet_balance == null) {
+        downgrade("No earnings information could be read from the document");
+      }
+      else if (confidence < VERIFY_THRESHOLD) downgrade(`AI confidence ${confidence}% is below the ${VERIFY_THRESHOLD}% threshold required for automatic verification`);
+    } else if (status === "verified") {
       if (tampering.length) { status = "rejected"; reason = `Tampering detected: ${tampering.join("; ")}`.slice(0, 500); confidence = Math.min(confidence, 40); }
       else if (aiLikelihood >= 60) { status = "rejected"; reason = "Document appears artificially generated or manually created"; confidence = Math.min(confidence, 40); }
       else if (auth.is_official_statement === false) downgrade("Does not look like an official issuer-generated statement");
       else if (auth.data_plausible === false) downgrade("Values on the document are not plausible");
       else if (auth.branding_ok === false) downgrade("Expected issuer branding or layout is missing");
       else if (auth.required_fields_ok === false) downgrade(`Required fields missing${missing.length ? `: ${missing.join(", ")}` : ""}`);
-      else if (isIncome && auth.platform_matches_claim === false) downgrade("Platform on the document does not match the declared income source");
-      else if (isIncome && !extracted_amount) downgrade("No payout amount could be read from the document");
-      else if (!isIncome && !kindMatch) downgrade("Detected document type does not match the selected type");
+      else if (!kindMatch) downgrade("Detected document type does not match the selected type");
       else if (confidence < VERIFY_THRESHOLD) downgrade(`AI confidence ${confidence}% is below the ${VERIFY_THRESHOLD}% threshold required for automatic verification`);
     }
 
