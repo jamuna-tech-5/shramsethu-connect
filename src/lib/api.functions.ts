@@ -188,8 +188,11 @@ export const analyzeDocument = createServerFn({ method: "POST" })
       duplicate = !!(dup && dup.length);
     }
 
-    const { aiPrompt, parseJsonLoose, resolveAiProvider, AI_NOT_CONFIGURED_MESSAGE } = await import("@/lib/ai.server");
+    const { aiPrompt, parseJsonLoose, resolveAiProvider, aiEnvDiagnostics, AI_NOT_CONFIGURED_MESSAGE } = await import("@/lib/ai.server");
     if (!resolveAiProvider()) {
+      // Log the non-secret env presence report so production shows WHY no
+      // provider resolved (wrong var name, wrong environment, not redeployed).
+      console.error("[verify] no AI provider available", { documentId: doc.id, ...aiEnvDiagnostics() });
       await supabase.from("documents").update({
         ocr_status: "failed", status: "needs_review",
         verification_reason: AI_NOT_CONFIGURED_MESSAGE, ai_verified_at: new Date().toISOString(),

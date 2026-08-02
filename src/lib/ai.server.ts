@@ -4,6 +4,8 @@
 //   2. GEMINI_API_KEY   -> Google Generative Language API (direct)
 //   3. OPENAI_API_KEY   -> OpenAI chat completions (direct)
 
+import { serverEnv, serverEnvAny, envPresence } from "@/lib/env.server";
+
 export type AiAttachment = { mime: string; b64: string; filename?: string };
 
 export type AiProviderInfo =
@@ -23,11 +25,11 @@ export const AI_NOT_CONFIGURED_MESSAGE =
  */
 export function resolveAiProviders(): NonNullable<AiProviderInfo>[] {
   const list: NonNullable<AiProviderInfo>[] = [];
-  const lovable = process.env.LOVABLE_API_KEY?.trim();
+  const lovable = serverEnv("LOVABLE_API_KEY");
   if (lovable) list.push({ provider: "lovable", key: lovable });
-  const gemini = (process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY)?.trim();
+  const gemini = serverEnvAny("GEMINI_API_KEY", "GOOGLE_AI_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY");
   if (gemini) list.push({ provider: "gemini", key: gemini });
-  const openai = process.env.OPENAI_API_KEY?.trim();
+  const openai = serverEnv("OPENAI_API_KEY");
   if (openai) list.push({ provider: "openai", key: openai });
   return list;
 }
@@ -36,19 +38,40 @@ export function resolveAiProvider(): AiProviderInfo {
   return resolveAiProviders()[0] ?? null;
 }
 
+/** Non-secret diagnostics for production debugging (no key values). */
+export function aiEnvDiagnostics() {
+  return {
+    providers: resolveAiProviders().map((p) => p.provider),
+    keysPresent: envPresence([
+      "LOVABLE_API_KEY",
+      "GEMINI_API_KEY",
+      "GOOGLE_AI_API_KEY",
+      "GOOGLE_GENERATIVE_AI_API_KEY",
+      "OPENAI_API_KEY",
+    ]),
+    geminiModels: geminiModelCandidates(),
+    runtime: typeof process !== "undefined" && process.release?.name === "node" ? "node" : "worker/edge",
+  };
+}
+
 function modelFor(provider: "lovable" | "gemini" | "openai") {
-  if (provider === "lovable") return process.env.AI_MODEL?.trim() || "google/gemini-2.5-flash";
+  if (provider === "lovable") return serverEnv("AI_MODEL") || "google/gemini-2.5-flash";
   if (provider === "gemini") return geminiModelCandidates()[0]!;
-  return process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini";
+  return serverEnv("OPENAI_MODEL") || "gpt-4o-mini";
 }
 
 // Direct Google Generative Language API model fallback chain. Some accounts no
 // longer have access to a given model ("is no longer available to new users",
 // 404 NOT_FOUND) — try the next supported stable model instead of failing.
-const GEMINI_FALLBACK_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash"];
+const GEMINI_FALLBACK_MODELS = [
+  "gemini-flash-latest",
+  "gemini-2.5-flash",
+  "gemini-2.5-flash-lite",
+  "gemini-2.0-flash",
+];
 
 function geminiModelCandidates(): string[] {
-  const preferred = process.env.GEMINI_MODEL?.trim();
+  const preferred = serverEnv("GEMINI_MODEL");
   const list = preferred ? [preferred, ...GEMINI_FALLBACK_MODELS] : [...GEMINI_FALLBACK_MODELS];
   return list.filter((m, i) => m && list.indexOf(m) === i);
 }
@@ -89,7 +112,10 @@ export async function aiPrompt(opts: {
   system?: string;
 }): Promise<string> {
   const providers = resolveAiProviders();
-  if (providers.length === 0) throw new Error(AI_NOT_CONFIGURED_MESSAGE);
+  if (providers.length === 0) {
+    console.error("[ai] no provider resolved", aiEnvDiagnostics());
+    throw new Error(AI_NOT_CONFIGURED_MESSAGE);
+  }
   let lastErr: unknown;
   for (const p of providers) {
     try {
