@@ -38,8 +38,24 @@ export function resolveAiProvider(): AiProviderInfo {
 
 function modelFor(provider: "lovable" | "gemini" | "openai") {
   if (provider === "lovable") return process.env.AI_MODEL?.trim() || "google/gemini-2.5-flash";
-  if (provider === "gemini") return process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash";
+  if (provider === "gemini") return geminiModelCandidates()[0]!;
   return process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini";
+}
+
+// Direct Google Generative Language API model fallback chain. Some accounts no
+// longer have access to a given model ("is no longer available to new users",
+// 404 NOT_FOUND) — try the next supported stable model instead of failing.
+const GEMINI_FALLBACK_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash"];
+
+function geminiModelCandidates(): string[] {
+  const preferred = process.env.GEMINI_MODEL?.trim();
+  const list = preferred ? [preferred, ...GEMINI_FALLBACK_MODELS] : [...GEMINI_FALLBACK_MODELS];
+  return list.filter((m, i) => m && list.indexOf(m) === i);
+}
+
+function isModelUnavailable(status: number, body: string): boolean {
+  if (status === 404 || status === 400 || status === 403) return true;
+  return /not\s*found|no longer available|not supported|unsupported model|does not exist/i.test(body);
 }
 
 // Transient upstream failures (429/5xx/network) must not be reported as a
