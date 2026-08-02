@@ -10,7 +10,12 @@ import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 // that produces a Worker bundle Vercel cannot run, so every server function
 // (admin dashboard, OCR, nearby places) 404s in production. Detect Vercel's
 // build env and pin the matching Nitro preset instead.
-const isVercel = !!process.env.VERCEL;
+// VERCEL is set by Vercel's own builder, but some CI/GitHub-driven builds only
+// expose VERCEL_ENV / NOW_BUILDER. Miss it and Nitro falls back to the
+// Cloudflare preset, whose env injection never populates process.env on
+// Vercel — every server function (OCR/Gemini included) then behaves as if
+// GEMINI_API_KEY were missing.
+const isVercel = !!(process.env.VERCEL || process.env.VERCEL_ENV || process.env.NOW_BUILDER);
 
 export default defineConfig({
   // Note: Vercel's default function timeout (10s on Hobby) can abort the
