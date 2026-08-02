@@ -38,8 +38,24 @@ export function resolveAiProvider(): AiProviderInfo {
 
 function modelFor(provider: "lovable" | "gemini" | "openai") {
   if (provider === "lovable") return process.env.AI_MODEL?.trim() || "google/gemini-2.5-flash";
-  if (provider === "gemini") return process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash";
+  if (provider === "gemini") return geminiModelCandidates()[0]!;
   return process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini";
+}
+
+// Direct Google Generative Language API model fallback chain. Some accounts no
+// longer have access to a given model ("is no longer available to new users",
+// 404 NOT_FOUND) — try the next supported stable model instead of failing.
+const GEMINI_FALLBACK_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash"];
+
+function geminiModelCandidates(): string[] {
+  const preferred = process.env.GEMINI_MODEL?.trim();
+  const list = preferred ? [preferred, ...GEMINI_FALLBACK_MODELS] : [...GEMINI_FALLBACK_MODELS];
+  return list.filter((m, i) => m && list.indexOf(m) === i);
+}
+
+function isModelUnavailable(status: number, body: string): boolean {
+  if (status === 404 || status === 400 || status === 403) return true;
+  return /not\s*found|no longer available|not supported|unsupported model|does not exist/i.test(body);
 }
 
 // Transient upstream failures (429/5xx/network) must not be reported as a
@@ -98,23 +114,34 @@ async function aiPromptWith(
     if (opts.attachment) {
       parts.push({ inlineData: { mimeType: opts.attachment.mime, data: opts.attachment.b64 } });
     }
-    const res = await fetchWithRetry(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-goog-api-key": key },
-        body: JSON.stringify({
-          contents: [{ role: "user", parts }],
-          ...(opts.system ? { systemInstruction: { parts: [{ text: opts.system }] } } : {}),
-          generationConfig: opts.json ? { responseMimeType: "application/json" } : {},
-        }),
-      },
-    );
-    if (!res.ok) throw new Error(`AI error [${res.status}]: ${(await res.text()).slice(0, 300)}`);
-    const j = (await res.json()) as {
-      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-    };
-    return j.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
+    const body = JSON.stringify({
+      contents: [{ role: "user", parts }],
+      ...(opts.system ? { systemInstruction: { parts: [{ text: opts.system }] } } : {}),
+      generationConfig: opts.json ? { responseMimeType: "application/json" } : {},
+    });
+    let lastErr: unknown;
+    for (const candidate of geminiModelCandidates()) {
+      const res = await fetchWithRetry(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(candidate)}:generateContent`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+          body,
+        },
+      );
+      if (res.ok) {
+        const j = (await res.json()) as {
+          candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+        };
+        return j.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
+      }
+      const text = (await res.text()).slice(0, 500);
+      // Server-side detail only; callers surface a generic message to users.
+      console.error(`[ai] gemini model "${candidate}" failed [${res.status}]: ${text}`);
+      lastErr = new Error(`AI error [${res.status}]: ${text}`);
+      if (!isModelUnavailable(res.status, text)) break;
+    }
+    throw lastErr instanceof Error ? lastErr : new Error("AI error: Gemini request failed");
   }
 
   // OpenAI-compatible shape (Lovable AI Gateway and OpenAI)
