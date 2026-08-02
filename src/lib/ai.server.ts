@@ -114,23 +114,34 @@ async function aiPromptWith(
     if (opts.attachment) {
       parts.push({ inlineData: { mimeType: opts.attachment.mime, data: opts.attachment.b64 } });
     }
-    const res = await fetchWithRetry(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-goog-api-key": key },
-        body: JSON.stringify({
-          contents: [{ role: "user", parts }],
-          ...(opts.system ? { systemInstruction: { parts: [{ text: opts.system }] } } : {}),
-          generationConfig: opts.json ? { responseMimeType: "application/json" } : {},
-        }),
-      },
-    );
-    if (!res.ok) throw new Error(`AI error [${res.status}]: ${(await res.text()).slice(0, 300)}`);
-    const j = (await res.json()) as {
-      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-    };
-    return j.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
+    const body = JSON.stringify({
+      contents: [{ role: "user", parts }],
+      ...(opts.system ? { systemInstruction: { parts: [{ text: opts.system }] } } : {}),
+      generationConfig: opts.json ? { responseMimeType: "application/json" } : {},
+    });
+    let lastErr: unknown;
+    for (const candidate of geminiModelCandidates()) {
+      const res = await fetchWithRetry(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(candidate)}:generateContent`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+          body,
+        },
+      );
+      if (res.ok) {
+        const j = (await res.json()) as {
+          candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+        };
+        return j.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
+      }
+      const text = (await res.text()).slice(0, 500);
+      // Server-side detail only; callers surface a generic message to users.
+      console.error(`[ai] gemini model "${candidate}" failed [${res.status}]: ${text}`);
+      lastErr = new Error(`AI error [${res.status}]: ${text}`);
+      if (!isModelUnavailable(res.status, text)) break;
+    }
+    throw lastErr instanceof Error ? lastErr : new Error("AI error: Gemini request failed");
   }
 
   // OpenAI-compatible shape (Lovable AI Gateway and OpenAI)
