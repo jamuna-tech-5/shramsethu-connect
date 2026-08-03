@@ -74,8 +74,9 @@ function collectNodes(root: Node, store: OriginalStore) {
   if (root.nodeType === 1 && isSkippableElement(root as Element)) return { texts, attrs };
   if (root.nodeType === 3) {
     const t = root as Text;
-    if (!isSkippableElement(t.parentElement) && shouldTranslate(t.nodeValue ?? "")) {
-      if (!store.text.has(t)) store.text.set(t, t.nodeValue ?? "");
+    const known = store.text.get(t);
+    if (!isSkippableElement(t.parentElement) && (known != null || shouldTranslate(t.nodeValue ?? ""))) {
+      if (known == null) store.text.set(t, t.nodeValue ?? "");
       texts.push(t);
     }
     return { texts, attrs };
@@ -88,8 +89,8 @@ function collectNodes(root: Node, store: OriginalStore) {
       if (!isSkippableElement(el)) {
         for (const a of ATTRS_TO_TRANSLATE) {
           const v = el.getAttribute(a);
-          if (v && shouldTranslate(v)) {
-            const cur = store.attr.get(el) ?? {};
+          const cur = store.attr.get(el) ?? {};
+          if (v && (a in cur || shouldTranslate(v))) {
             if (!(a in cur)) cur[a] = v;
             store.attr.set(el, cur);
             attrs.push({ el, name: a });
@@ -98,8 +99,9 @@ function collectNodes(root: Node, store: OriginalStore) {
       }
     } else if (node.nodeType === 3) {
       const t = node as Text;
-      if (!isSkippableElement(t.parentElement) && shouldTranslate(t.nodeValue ?? "")) {
-        if (!store.text.has(t)) store.text.set(t, t.nodeValue ?? "");
+      const known = store.text.get(t);
+      if (!isSkippableElement(t.parentElement) && (known != null || shouldTranslate(t.nodeValue ?? ""))) {
+        if (known == null) store.text.set(t, t.nodeValue ?? "");
         texts.push(t);
       }
     }
