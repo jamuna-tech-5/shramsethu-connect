@@ -204,10 +204,12 @@ export const analyzeDocument = createServerFn({ method: "POST" })
     const kindLabel = String(doc.kind).replace(/_/g, " ");
     const attachment = { mime, b64, filename: (doc.file_name as string) ?? "document" };
 
-    // ---- STAGE 1: OCR — extraction ONLY, no verdict ----
-    const ocrPrompt = `You are an OCR extraction engine. Do NOT judge authenticity. Transcribe the attached ${kindLabel} document or app screenshot faithfully and extract whatever fields are visible. Missing fields are normal — return null for them, never invent values.
-Return STRICT JSON only:
-{"extracted_text": string (full verbatim text, preserve line breaks),
+    // Server-authoritative current date — the model must never guess "today".
+    const serverToday = new Date();
+    const serverTodayIso = serverToday.toISOString().slice(0, 10);
+
+    // ---- SINGLE COMBINED PASS: OCR extraction + forensic authenticity audit ----
+    const extractionSchema = `{"extracted_text": string (full verbatim text, preserve line breaks),
  "detected_type": string (what kind of document this appears to be),
  "legible": boolean (false if blank/unreadable/corrupted),
  "amount": number|null (earnings / total earnings / ride earnings / net pay / amount received, plain number, no symbols or commas),
@@ -223,8 +225,7 @@ Return STRICT JSON only:
  "worker_name": string|null,
  "transaction_ref": string|null,
  "frequency_detected": "daily"|"weekly"|"monthly"|"yearly"|null,
- "present_sections": string[] (field/section headings actually present, e.g. "today's earnings","trip history","incentives","orders completed","wallet balance","payout id")}
-JSON only.`;
+ "present_sections": string[] (field/section headings actually present, e.g. "today's earnings","trip history","incentives","orders completed","wallet balance","payout id")}`;
 
     type OcrJson = {
       extracted_text?: string; detected_type?: string; legible?: boolean;
@@ -237,37 +238,13 @@ JSON only.`;
       frequency_detected?: "daily" | "weekly" | "monthly" | "yearly" | null;
       present_sections?: string[];
     };
-    let ocr: OcrJson = {};
-    let ocrText = "";
-    try {
-      const raw = await aiPrompt({ prompt: ocrPrompt, json: true, attachment });
-      ocr = parseJsonLoose(raw, {} as OcrJson);
-      ocrText = String(ocr.extracted_text ?? "").slice(0, 15000);
-    } catch (e) {
-      const reason = e instanceof Error ? e.message : "OCR failed";
-      console.error("[ocr] extraction failed", { documentId: doc.id, mime, reason });
-      await supabase.from("documents").update({
-        ocr_status: "failed", status: "needs_review",
-        verification_reason: reason, ai_verified_at: new Date().toISOString(),
-      } as never).eq("id", doc.id);
-      return { status: "needs_review", confidence_score: 0, verification_reason: reason };
-    }
+    const combinedPrompt = isIncome
+      ? `You perform BOTH tasks in one pass on the ATTACHED file: (A) OCR extraction, (B) forensic authenticity audit.
+You are verifying EARNINGS EVIDENCE submitted by an Indian gig worker as proof of income. The worker claims income from "${doc.income_source ?? "unspecified"}" (${doc.income_frequency ?? "unspecified"} frequency).
 
-    // ---- STAGE 2: authenticity / forensic audit (separate pass over the same file) ----
-    const authPrompt = isIncome
-      ? `You are verifying EARNINGS EVIDENCE submitted by an Indian gig worker as proof of income. The worker claims income from "${doc.income_source ?? "unspecified"}" (${doc.income_frequency ?? "unspecified"} frequency).
+TODAY'S ACTUAL DATE (authoritative, from the server) IS ${serverTodayIso}. Do NOT use any internal assumption about the current date. Any date on or before ${serverTodayIso} is a PAST date and is completely normal. Only a date strictly AFTER ${serverTodayIso} may be treated as a future date. Never call a date implausible or future-dated unless it is strictly after ${serverTodayIso}.
 
-OCR already extracted this data (use it, but judge the ATTACHED FILE itself):
-${JSON.stringify({
-        detected_type: ocr.detected_type ?? null,
-        amount: ocr.amount ?? null,
-        total_earnings: ocr.total_earnings ?? null,
-        ride_count: ocr.ride_count ?? null,
-        employer_or_platform: ocr.employer_or_platform ?? null,
-        payment_date: ocr.payment_date ?? null,
-        transaction_ref: ocr.transaction_ref ?? null,
-        present_sections: ocr.present_sections ?? [],
-      }).slice(0, 2000)}
+For task (A), transcribe faithfully and extract whatever fields are visible. Missing fields are normal — return null for them, never invent values.
 
 IMPORTANT — IN-APP SCREENSHOTS ARE VALID EVIDENCE.
 Gig platforms (Rapido, Ola, Uber, Namma Yatri, Swiggy, Zomato, Porter, Dunzo, Blinkit, Zepto, Amazon Flex, Flipkart) show earnings inside their partner/driver apps. A screenshot of such an app IS acceptable proof. An official salary slip or payout statement is NOT required.
@@ -287,8 +264,11 @@ Assess:
 2. Earnings readability: is at least one earnings figure or earnings statistic clearly readable?
 3. Manipulation signals ONLY (be evidence-based, not suspicion-based): edited/repainted digits, inconsistent fonts or baselines within a number, cloned regions, obviously fabricated or mocked-up screen, placeholder text.
 4. Data plausibility: impossible dates or wildly implausible amounts for the claimed platform and period.
+   A trip/payment date earlier than or equal to ${serverTodayIso} is ALWAYS plausible.
 
-Return STRICT JSON only:
+Return STRICT JSON only — ONE object containing the extraction fields:
+${extractionSchema}
+merged with the audit fields:
 {"is_official_statement": boolean (true also for a genuine in-app earnings screen),
  "platform_identified": string|null,
  "platform_matches_claim": boolean (true unless the visible platform clearly contradicts the claim),
@@ -307,9 +287,13 @@ Scoring rules:
 - "needs_review" (50-69) when the platform or the earnings figure is only partly legible or you cannot place the source.
 - "rejected" (<50) ONLY when: the image is unreadable/blank, no earnings information is visible at all, the content is unrelated to gig work or employment income, or there is concrete evidence of manipulation/fabrication.
 JSON only.`
-      : `You are a forensic document-fraud examiner. Judge the ATTACHED ${kindLabel} document for authenticity, not just readability. OCR read: ${JSON.stringify({ detected_type: ocr.detected_type ?? null, legible: ocr.legible ?? null }).slice(0, 500)}.
-Check: correct document type, expected issuing-authority branding and layout, all mandatory fields present, and any tampering / editing / AI-generation / template signals.
-Return STRICT JSON only:
+      : `You perform BOTH tasks in one pass on the ATTACHED ${kindLabel} document: (A) OCR extraction, (B) forensic fraud examination. Judge authenticity, not just readability.
+TODAY'S ACTUAL DATE (authoritative, from the server) IS ${serverTodayIso}. Do NOT use any internal assumption about the current date. Any date on or before ${serverTodayIso} is a normal past date; only a date strictly after ${serverTodayIso} is future-dated.
+For (A) extract fields faithfully, null when absent, never invent values.
+For (B) check: correct document type, expected issuing-authority branding and layout, all mandatory fields present, and any tampering / editing / AI-generation / template signals.
+Return STRICT JSON only — ONE object with the extraction fields:
+${extractionSchema}
+merged with:
 {"is_official_statement": boolean, "platform_identified": string|null, "platform_matches_claim": true, "branding_ok": boolean, "required_fields_ok": boolean, "missing_fields": string[], "tampering_signals": string[], "ai_generated_likelihood": number (0-100), "data_plausible": boolean, "authenticity_confidence": number (0-100), "verdict": "verified"|"needs_review"|"rejected", "reason": string}
 "verified" only when authenticity_confidence >= 90 with no tampering signals; "rejected" on forgery/editing/wrong document/blank; otherwise "needs_review". JSON only.`;
 
@@ -321,18 +305,41 @@ Return STRICT JSON only:
       data_plausible?: boolean; authenticity_confidence?: number;
       verdict?: string; reason?: string;
     };
+    // ONE Gemini/AI request per uploaded document — extraction + audit together.
+    let ocr: OcrJson = {};
     let auth: AuthJson = {};
+    let ocrText = "";
     try {
-      const raw = await aiPrompt({ prompt: authPrompt, json: true, attachment });
-      auth = parseJsonLoose(raw, {} as AuthJson);
+      const raw = await aiPrompt({ prompt: combinedPrompt, json: true, attachment });
+      const merged = parseJsonLoose(raw, {} as OcrJson & AuthJson);
+      ocr = merged as OcrJson;
+      auth = merged as AuthJson;
+      ocrText = String(ocr.extracted_text ?? "").slice(0, 15000);
     } catch (e) {
-      const reason = `Authenticity check unavailable — sent for manual review (${e instanceof Error ? e.message : "AI error"})`;
-      console.error("[ocr] authenticity pass failed", { documentId: doc.id, mime, reason });
+      const reason = e instanceof Error ? e.message : "Verification failed";
+      console.error("[ocr] combined extraction/audit failed", { documentId: doc.id, mime, reason });
       await supabase.from("documents").update({
-        ocr_status: "done", status: "needs_review", ocr_text: ocrText || null,
+        ocr_status: "failed", status: "needs_review",
         verification_reason: reason.slice(0, 500), ai_verified_at: new Date().toISOString(),
       } as never).eq("id", doc.id);
       return { status: "needs_review", confidence_score: 0, verification_reason: reason };
+    }
+
+    // ---- Programmatic date validation (server clock is authoritative) ----
+    // Any extracted date on/before today is valid; the model is never allowed to
+    // downgrade a document on a wrong "future date" assumption.
+    const dateCandidates = [ocr.payment_date, ocr.period_end, ocr.period_start]
+      .filter((d): d is string => typeof d === "string" && /^\d{4}-\d{2}-\d{2}/.test(d))
+      .map((d) => d.slice(0, 10));
+    const hasFutureDate = dateCandidates.some((d) => d > serverTodayIso);
+    if (dateCandidates.length > 0 && !hasFutureDate) {
+      const mentionsFuture = /future|not yet occurred|has not occurred|ahead of|after today|yet to happen|upcoming date|date is later/i;
+      if (auth.data_plausible === false && mentionsFuture.test(String(auth.reason ?? ""))) {
+        auth.data_plausible = true;
+        auth.reason = "Earnings evidence is readable and the trip/payment date is a valid past date.";
+        if (auth.verdict === "needs_review" || auth.verdict === "rejected") auth.verdict = "verified";
+      }
+      auth.tampering_signals = (auth.tampering_signals ?? []).filter((s) => !mentionsFuture.test(String(s)));
     }
 
     // Kind mismatch check via keywords when AI didn't already reject
