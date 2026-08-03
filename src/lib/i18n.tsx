@@ -74,8 +74,9 @@ function collectNodes(root: Node, store: OriginalStore) {
   if (root.nodeType === 1 && isSkippableElement(root as Element)) return { texts, attrs };
   if (root.nodeType === 3) {
     const t = root as Text;
-    if (!isSkippableElement(t.parentElement) && shouldTranslate(t.nodeValue ?? "")) {
-      if (!store.text.has(t)) store.text.set(t, t.nodeValue ?? "");
+    const known = store.text.get(t);
+    if (!isSkippableElement(t.parentElement) && (known != null || shouldTranslate(t.nodeValue ?? ""))) {
+      if (known == null) store.text.set(t, t.nodeValue ?? "");
       texts.push(t);
     }
     return { texts, attrs };
@@ -88,8 +89,8 @@ function collectNodes(root: Node, store: OriginalStore) {
       if (!isSkippableElement(el)) {
         for (const a of ATTRS_TO_TRANSLATE) {
           const v = el.getAttribute(a);
-          if (v && shouldTranslate(v)) {
-            const cur = store.attr.get(el) ?? {};
+          const cur = store.attr.get(el) ?? {};
+          if (v && (a in cur || shouldTranslate(v))) {
             if (!(a in cur)) cur[a] = v;
             store.attr.set(el, cur);
             attrs.push({ el, name: a });
@@ -98,8 +99,9 @@ function collectNodes(root: Node, store: OriginalStore) {
       }
     } else if (node.nodeType === 3) {
       const t = node as Text;
-      if (!isSkippableElement(t.parentElement) && shouldTranslate(t.nodeValue ?? "")) {
-        if (!store.text.has(t)) store.text.set(t, t.nodeValue ?? "");
+      const known = store.text.get(t);
+      if (!isSkippableElement(t.parentElement) && (known != null || shouldTranslate(t.nodeValue ?? ""))) {
+        if (known == null) store.text.set(t, t.nodeValue ?? "");
         texts.push(t);
       }
     }
@@ -240,21 +242,30 @@ export function I18nProvider({ children }: { children: ReactNode }) {
           const t = m.target as Text;
           if (!t.parentElement || isSkippableElement(t.parentElement)) continue;
           const currentText = t.nodeValue ?? "";
-          if (!shouldTranslate(currentText)) continue;
+          const known = storeRef.current.text.get(t);
+          if (known == null && !shouldTranslate(currentText)) continue;
           // If the mutation matches a known translation, ignore (it was us).
           if (reverseRef.current.has(currentText.trim())) continue;
-          storeRef.current.text.set(t, currentText);
+          // Only adopt a new source string when it looks like source text; a
+          // non-latin value here is a leftover translation from another language.
+          if (shouldTranslate(currentText) && currentText.trim() !== (known ?? "").trim()) {
+            storeRef.current.text.set(t, currentText);
+          } else if (known == null) {
+            storeRef.current.text.set(t, currentText);
+          }
           texts.push(t);
         } else if (m.type === "attributes" && m.target.nodeType === 1) {
           const el = m.target as Element;
           const name = m.attributeName ?? "";
           if (!(ATTRS_TO_TRANSLATE as readonly string[]).includes(name)) continue;
           const v = el.getAttribute(name) ?? "";
-          if (!shouldTranslate(v)) continue;
-          if (reverseRef.current.has(v.trim())) continue;
           const cur = storeRef.current.attr.get(el) ?? {};
-          cur[name] = v;
-          storeRef.current.attr.set(el, cur);
+          if (!(name in cur) && !shouldTranslate(v)) continue;
+          if (reverseRef.current.has(v.trim())) continue;
+          if (shouldTranslate(v)) {
+            cur[name] = v;
+            storeRef.current.attr.set(el, cur);
+          }
           attrs.push({ el, name });
         } else if (m.type === "childList") {
           m.addedNodes.forEach((n) => {
