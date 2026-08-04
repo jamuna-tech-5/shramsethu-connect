@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Locate, Navigation, Share2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/PageHeader";
