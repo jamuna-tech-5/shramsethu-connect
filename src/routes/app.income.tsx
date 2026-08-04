@@ -49,6 +49,12 @@ const PROOF_KINDS: { value: DocKind; label: string }[] = [
 const ACCEPT = ".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg";
 const MAX_BYTES = 10 * 1024 * 1024;
 
+const MONTHS = [
+  "January","February","March","April","May","June",
+  "July","August","September","October","November","December",
+] as const;
+const YEARS = [2026, 2025, 2024, 2023, 2022, 2021, 2020] as const;
+
 type UploadRow = Awaited<ReturnType<typeof listMyIncomeUploads>>[number];
 
 function IncomePage() {
@@ -277,10 +283,13 @@ function UploadEarningsDialog({ onSaved }: { onSaved: () => void }) {
   const [source, setSource] = useState<IncomeSource>("Zomato");
   const [frequency, setFrequency] = useState<Frequency>("monthly");
   const [kind, setKind] = useState<DocKind>("payment_receipt");
+  const [month, setMonth] = useState<string>(String(new Date().getMonth() + 1));
+  const [year, setYear] = useState<string>(String(new Date().getFullYear()));
   const [busy, setBusy] = useState(false);
 
   const uploadFiles = async (files: FileList | File[]) => {
     if (!session) { toast.error("Please sign in"); return; }
+    if (!month || !year) { toast.error("Select month and year"); return; }
     const list = Array.from(files);
     if (!list.length) return;
     setBusy(true);
@@ -294,13 +303,15 @@ function UploadEarningsDialog({ onSaved }: { onSaved: () => void }) {
         if (up.error) throw up.error;
         const rec = await recordDocument({ data: {
           kind,
-          document_name: `${source} · ${frequency} · ${file.name}`,
+          document_name: `${source} · ${frequency} · ${MONTHS[Number(month) - 1]} ${year} · ${file.name}`,
           storage_path: path,
           file_name: file.name,
           mime_type: file.type || "application/octet-stream",
           size_bytes: file.size,
           income_source: source,
           income_frequency: frequency,
+          income_month: Number(month),
+          income_year: Number(year),
           is_income_proof: true,
         } });
         toast.success(`${file.name} uploaded — running AI verification`);
@@ -363,9 +374,27 @@ function UploadEarningsDialog({ onSaved }: { onSaved: () => void }) {
             </Select>
           </div>
           <div>
+            <Label>Month <span className="text-destructive">*</span></Label>
+            <Select value={month} onValueChange={setMonth}>
+              <SelectTrigger className="mt-1"><SelectValue placeholder="Select month" /></SelectTrigger>
+              <SelectContent>
+                {MONTHS.map((m, i) => <SelectItem key={m} value={String(i + 1)}>{m}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>Year <span className="text-destructive">*</span></Label>
+            <Select value={year} onValueChange={setYear}>
+              <SelectTrigger className="mt-1"><SelectValue placeholder="Select year" /></SelectTrigger>
+              <SelectContent>
+                {YEARS.map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
             <Label>Upload file(s)</Label>
             <label className="mt-1 block">
-              <Button asChild className="w-full rounded-full" disabled={busy}>
+              <Button asChild className="w-full rounded-full" disabled={busy || !month || !year}>
                 <span className="cursor-pointer">
                   {busy ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Uploading…</>
                         : <><Upload className="mr-2 h-4 w-4" /> Choose file(s)</>}
