@@ -563,7 +563,7 @@ export const listMyIncomeUploads = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { data, error } = await context.supabase
       .from("documents")
-      .select("id, kind, status, file_name, document_name, storage_path, mime_type, ocr_status, confidence_score, verification_reason, ai_verified_at, created_at, income_source, income_frequency, extracted_amount, extracted_date, extracted_employer, extracted_txn_ref")
+      .select("id, kind, status, file_name, document_name, storage_path, mime_type, ocr_status, confidence_score, verification_reason, ai_verified_at, created_at, income_source, income_frequency, income_month, income_year, extracted_amount, extracted_date, extracted_employer, extracted_txn_ref")
       .eq("user_id", context.userId)
       .eq("is_income_proof", true)
       .order("created_at", { ascending: false });
