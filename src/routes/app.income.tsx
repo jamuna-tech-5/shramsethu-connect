@@ -53,7 +53,11 @@ const MONTHS = [
   "January","February","March","April","May","June",
   "July","August","September","October","November","December",
 ] as const;
-const YEARS = [2026, 2025, 2024, 2023, 2022, 2021, 2020] as const;
+// Scalable year range — bump YEAR_MAX (or leave it, it auto-extends with the
+// current year) and the dropdown grows without any UI/logic changes.
+const YEAR_MIN = 2020;
+const YEAR_MAX = Math.max(2030, new Date().getFullYear() + 1);
+const YEARS: number[] = Array.from({ length: YEAR_MAX - YEAR_MIN + 1 }, (_, i) => YEAR_MAX - i);
 
 type UploadRow = Awaited<ReturnType<typeof listMyIncomeUploads>>[number];
 
