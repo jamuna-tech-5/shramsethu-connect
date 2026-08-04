@@ -16,9 +16,19 @@ export const Route = createFileRoute("/app/schemes")({
 
 const TAGS = ["All", "Registration", "Pension", "Health", "Insurance"];
 const HIDDEN_CATEGORIES = ["Welfare", "Credit"];
+// Schemes removed from the catalogue (matched by code or name, case-insensitive).
+const HIDDEN_SCHEMES = ["pmjay", "ayushman"];
+
+const isHidden = (s: { name: string; category: string | null; code?: string | null }) => {
+  const hay = `${s.code ?? ""} ${s.name}`.toLowerCase();
+  return (
+    HIDDEN_CATEGORIES.includes(s.category ?? "") ||
+    HIDDEN_SCHEMES.some((h) => hay.includes(h))
+  );
+};
 
 type Scheme = {
-  id: string; name: string; category: string | null; summary: string | null;
+  id: string; code?: string | null; name: string; category: string | null; summary: string | null;
   authority?: string | null; benefits?: string | null; eligibility: string | null; url?: string | null;
 };
 
@@ -32,7 +42,7 @@ function SchemesPage() {
     () =>
       SCHEMES.filter(
         (s) =>
-          !HIDDEN_CATEGORIES.includes(s.category ?? "") &&
+          !isHidden(s) &&
           (tag === "All" || s.category === tag) &&
           (s.name.toLowerCase().includes(q.toLowerCase()) ||
             (s.summary ?? "").toLowerCase().includes(q.toLowerCase())),

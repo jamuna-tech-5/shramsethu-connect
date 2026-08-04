@@ -1,12 +1,22 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { AlertTriangle, Phone, ShieldAlert, Siren } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { AlertTriangle, MessageSquare, Phone, Pencil, Plus, Share2, ShieldAlert, Siren, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useStore } from "@/lib/store";
-import { triggerSOS } from "@/lib/api.functions";
+import { getCurrentCoords } from "@/lib/geolocation";
+import {
+  deleteEmergencyContact,
+  listEmergencyContacts,
+  saveEmergencyContact,
+  triggerSOS,
+} from "@/lib/api.functions";
 
 export const Route = createFileRoute("/app/sos")({
   component: SosPage,
@@ -15,30 +25,106 @@ export const Route = createFileRoute("/app/sos")({
 const HOTLINES = [
   { label: "Police", number: "100" },
   { label: "Ambulance", number: "108" },
+  { label: "Fire Department", number: "101" },
   { label: "Women Helpline", number: "1091" },
-  { label: "Disaster Management", number: "108" },
 ];
+
+type Contact = { id: string; name: string; phone: string; relation: string | null; is_primary: boolean };
 
 function SosPage() {
   const { profile } = useStore();
+  const qc = useQueryClient();
   const [triggered, setTriggered] = useState(false);
+  const [alert, setAlert] = useState<{ message: string; mapsUrl: string } | null>(null);
+  const [editing, setEditing] = useState<Partial<Contact> | null>(null);
+
+  const { data: contacts = [] } = useQuery({
+    queryKey: ["emergency-contacts"],
+    queryFn: () => listEmergencyContacts() as Promise<Contact[]>,
+  });
+
+  const save = useMutation({
+    mutationFn: (c: Partial<Contact>) =>
+      saveEmergencyContact({
+        data: {
+          id: c.id,
+          name: c.name ?? "",
+          phone: c.phone ?? "",
+          relation: c.relation ?? undefined,
+          is_primary: !!c.is_primary,
+        },
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["emergency-contacts"] });
+      setEditing(null);
+      toast.success("Emergency contact saved");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const remove = useMutation({
+    mutationFn: (id: string) => deleteEmergencyContact({ data: { id } }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["emergency-contacts"] });
+      toast.success("Contact removed");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   const trigger = async () => {
     setTriggered(true);
-    const fire = (lat?: number, lng?: number) =>
-      triggerSOS({ data: { lat, lng, message: "Emergency triggered from app" } })
-        .then(() => toast.success("SOS triggered. Your emergency contact will be notified."))
-        .catch((e) => toast.error(e instanceof Error ? e.message : "Failed to trigger SOS"));
-    if ("geolocation" in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (p) => fire(p.coords.latitude, p.coords.longitude),
-        () => fire(),
-        { timeout: 5000 },
-      );
-    } else {
-      await fire();
+    let lat: number | undefined;
+    let lng: number | undefined;
+    try {
+      const c = await getCurrentCoords();
+      lat = c.lat;
+      lng = c.lng;
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not get your location");
     }
+    const mapsUrl = lat != null && lng != null ? `https://www.google.com/maps?q=${lat},${lng}` : "";
+    const when = new Date().toLocaleString();
+    const message = [
+      `EMERGENCY SOS from ${profile?.fullName || "a ShramSethu user"}`,
+      "I need immediate help.",
+      `Time: ${when}`,
+      mapsUrl ? `Live location: ${mapsUrl}` : "Live location: unavailable",
+    ].join("\n");
+
+    triggerSOS({ data: { lat, lng, message } }).catch((e) =>
+      toast.error(e instanceof Error ? e.message : "Failed to record SOS"),
+    );
+    setAlert({ message, mapsUrl });
     setTimeout(() => setTriggered(false), 4000);
+  };
+
+  const sendSms = () => {
+    if (!alert) return;
+    const numbers = contacts.map((c) => c.phone.replace(/[^+0-9]/g, "")).filter(Boolean);
+    if (numbers.length === 0) {
+      toast.error("Add at least one emergency contact first");
+      return;
+    }
+    const sep = /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent) ? "&" : "?";
+    window.location.href = `sms:${numbers.join(",")}${sep}body=${encodeURIComponent(alert.message)}`;
+  };
+
+  const shareAlert = async () => {
+    if (!alert) return;
+    const payload: ShareData = { title: "Emergency SOS · ShramSethu", text: alert.message };
+    if (alert.mapsUrl) payload.url = alert.mapsUrl;
+    const nav = navigator as Navigator & { share?: (d: ShareData) => Promise<void>; canShare?: (d: ShareData) => boolean };
+    try {
+      if (nav.share && (!nav.canShare || nav.canShare(payload))) {
+        await nav.share(payload);
+        return;
+      }
+      await navigator.clipboard.writeText(alert.message);
+      toast.success("Emergency message copied — paste it in any app to share");
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") return;
+      toast.error(e instanceof Error ? e.message : "Could not share");
+    }
   };
 
   return (
@@ -74,18 +160,43 @@ function SosPage() {
 
         <div className="space-y-4">
           <div className="rounded-2xl border bg-card p-5 shadow-sm">
-            <h3 className="text-sm font-semibold">Your emergency contact</h3>
-            {profile?.emergencyName ? (
-              <div className="mt-3 rounded-xl border p-4">
-                <div className="text-sm font-semibold">{profile.emergencyName}</div>
-                <div className="text-xs text-muted-foreground">
-                  Contact · {profile.emergencyPhone}
-                </div>
-              </div>
-            ) : (
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-sm font-semibold">Your emergency contacts</h3>
+              <Button size="sm" variant="outline" className="rounded-full" onClick={() => setEditing({})}>
+                <Plus className="mr-1.5 h-3.5 w-3.5" /> Add
+              </Button>
+            </div>
+            {contacts.length === 0 ? (
               <p className="mt-3 text-sm text-muted-foreground">
-                No emergency contact set. Add one from your profile.
+                No emergency contacts yet. Add one so SOS can notify them instantly.
               </p>
+            ) : (
+              <ul className="mt-3 space-y-2">
+                {contacts.map((c) => (
+                  <li key={c.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-xl border p-3">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-semibold">
+                        {c.name}
+                        {c.is_primary ? <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">Primary</span> : null}
+                      </div>
+                      <div className="truncate text-xs text-muted-foreground">
+                        {c.relation ? `${c.relation} · ` : ""}{c.phone}
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <Button asChild size="icon" variant="ghost" className="h-8 w-8 rounded-full">
+                        <a href={`tel:${c.phone}`} aria-label={`Call ${c.name}`}><Phone className="h-3.5 w-3.5" /></a>
+                      </Button>
+                      <Button size="icon" variant="ghost" className="h-8 w-8 rounded-full" onClick={() => setEditing(c)} aria-label="Edit contact">
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button size="icon" variant="ghost" className="h-8 w-8 rounded-full text-destructive" onClick={() => remove.mutate(c.id)} aria-label="Delete contact">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
           <div className="rounded-2xl border bg-card p-5 shadow-sm">
@@ -106,6 +217,58 @@ function SosPage() {
           </div>
         </div>
       </div>
+
+      <Dialog open={!!alert} onOpenChange={(o) => !o && setAlert(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle>Send emergency alert</DialogTitle></DialogHeader>
+          <p className="text-xs text-muted-foreground">
+            Review the message below, then send it via SMS or share it through any app.
+          </p>
+          <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded-xl border bg-muted/40 p-3 text-xs">{alert?.message}</pre>
+          <p className="text-xs text-muted-foreground">
+            {contacts.length > 0
+              ? `Will be addressed to ${contacts.length} saved contact${contacts.length > 1 ? "s" : ""}.`
+              : "No saved contacts yet — add one to auto-fill numbers."}
+          </p>
+          <DialogFooter className="gap-2 sm:justify-between">
+            <Button variant="outline" className="rounded-full" onClick={shareAlert}>
+              <Share2 className="mr-1.5 h-3.5 w-3.5" /> Share via
+            </Button>
+            <Button className="rounded-full gradient-primary text-white" onClick={sendSms}>
+              <MessageSquare className="mr-1.5 h-3.5 w-3.5" /> Send SOS
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle>{editing?.id ? "Edit contact" : "Add emergency contact"}</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Name</Label>
+              <Input className="mt-1" value={editing?.name ?? ""} onChange={(e) => setEditing((p) => ({ ...p, name: e.target.value }))} />
+            </div>
+            <div>
+              <Label>Phone number</Label>
+              <Input className="mt-1" inputMode="tel" value={editing?.phone ?? ""} onChange={(e) => setEditing((p) => ({ ...p, phone: e.target.value }))} />
+            </div>
+            <div>
+              <Label>Relation (optional)</Label>
+              <Input className="mt-1" value={editing?.relation ?? ""} onChange={(e) => setEditing((p) => ({ ...p, relation: e.target.value }))} />
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={!!editing?.is_primary} onChange={(e) => setEditing((p) => ({ ...p, is_primary: e.target.checked }))} />
+              Primary contact
+            </label>
+          </div>
+          <DialogFooter>
+            <Button className="rounded-full" disabled={save.isPending} onClick={() => editing && save.mutate(editing)}>
+              {save.isPending ? "Saving…" : "Save contact"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

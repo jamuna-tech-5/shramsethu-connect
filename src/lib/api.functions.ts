@@ -1064,3 +1064,57 @@ export const nearbyPlaces = createServerFn({ method: "POST" })
     }
     return places;
   });
+// ---------- Emergency contacts ----------
+export const listEmergencyContacts = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { data, error } = await context.supabase
+      .from("emergency_contacts")
+      .select("id, name, phone, relation, is_primary")
+      .order("is_primary", { ascending: false })
+      .order("created_at", { ascending: true });
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  });
+
+export const saveEmergencyContact = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((v: { id?: string; name: string; phone: string; relation?: string; is_primary?: boolean }) => v)
+  .handler(async ({ data, context }) => {
+    const name = data.name.trim();
+    const phone = data.phone.trim();
+    if (!name) throw new Error("Name is required");
+    if (!/^[+0-9][0-9\s-]{5,19}$/.test(phone)) throw new Error("Enter a valid phone number");
+    const payload = {
+      user_id: context.userId,
+      name,
+      phone,
+      relation: data.relation?.trim() || null,
+      is_primary: !!data.is_primary,
+    };
+    if (data.id) {
+      const { error } = await context.supabase
+        .from("emergency_contacts")
+        .update(payload)
+        .eq("id", data.id)
+        .eq("user_id", context.userId);
+      if (error) throw new Error(error.message);
+    } else {
+      const { error } = await context.supabase.from("emergency_contacts").insert(payload);
+      if (error) throw new Error(error.message);
+    }
+    return { ok: true };
+  });
+
+export const deleteEmergencyContact = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((v: { id: string }) => v)
+  .handler(async ({ data, context }) => {
+    const { error } = await context.supabase
+      .from("emergency_contacts")
+      .delete()
+      .eq("id", data.id)
+      .eq("user_id", context.userId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
