@@ -68,6 +68,7 @@ export const recordDocument = createServerFn({ method: "POST" })
     kind: DocKind; document_name?: string; storage_path: string;
     file_name: string; mime_type: string; size_bytes: number;
     income_source?: string; income_frequency?: "daily" | "weekly" | "monthly" | "yearly";
+    income_month?: number; income_year?: number;
     is_income_proof?: boolean;
   }) => v)
   .handler(async ({ data, context }) => {
@@ -83,6 +84,8 @@ export const recordDocument = createServerFn({ method: "POST" })
       ocr_status: "queued",
       income_source: data.income_source ?? null,
       income_frequency: data.income_frequency ?? null,
+      income_month: data.income_month ?? null,
+      income_year: data.income_year ?? null,
       is_income_proof: !!data.is_income_proof,
     }).select("id").single();
     if (error) throw new Error(error.message);
