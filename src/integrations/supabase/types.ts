@@ -58,7 +58,9 @@ export type Database = {
           file_name: string | null
           id: string
           income_frequency: string | null
+          income_month: number | null
           income_source: string | null
+          income_year: number | null
           is_income_proof: boolean
           kind: Database["public"]["Enums"]["doc_kind"]
           mime_type: string | null
@@ -87,7 +89,9 @@ export type Database = {
           file_name?: string | null
           id?: string
           income_frequency?: string | null
+          income_month?: number | null
           income_source?: string | null
+          income_year?: number | null
           is_income_proof?: boolean
           kind: Database["public"]["Enums"]["doc_kind"]
           mime_type?: string | null
@@ -116,7 +120,9 @@ export type Database = {
           file_name?: string | null
           id?: string
           income_frequency?: string | null
+          income_month?: number | null
           income_source?: string | null
+          income_year?: number | null
           is_income_proof?: boolean
           kind?: Database["public"]["Enums"]["doc_kind"]
           mime_type?: string | null

@@ -68,6 +68,7 @@ export const recordDocument = createServerFn({ method: "POST" })
     kind: DocKind; document_name?: string; storage_path: string;
     file_name: string; mime_type: string; size_bytes: number;
     income_source?: string; income_frequency?: "daily" | "weekly" | "monthly" | "yearly";
+    income_month?: number; income_year?: number;
     is_income_proof?: boolean;
   }) => v)
   .handler(async ({ data, context }) => {
@@ -83,6 +84,8 @@ export const recordDocument = createServerFn({ method: "POST" })
       ocr_status: "queued",
       income_source: data.income_source ?? null,
       income_frequency: data.income_frequency ?? null,
+      income_month: data.income_month ?? null,
+      income_year: data.income_year ?? null,
       is_income_proof: !!data.is_income_proof,
     }).select("id").single();
     if (error) throw new Error(error.message);
@@ -560,7 +563,7 @@ export const listMyIncomeUploads = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { data, error } = await context.supabase
       .from("documents")
-      .select("id, kind, status, file_name, document_name, storage_path, mime_type, ocr_status, confidence_score, verification_reason, ai_verified_at, created_at, income_source, income_frequency, extracted_amount, extracted_date, extracted_employer, extracted_txn_ref")
+      .select("id, kind, status, file_name, document_name, storage_path, mime_type, ocr_status, confidence_score, verification_reason, ai_verified_at, created_at, income_source, income_frequency, income_month, income_year, extracted_amount, extracted_date, extracted_employer, extracted_txn_ref")
       .eq("user_id", context.userId)
       .eq("is_income_proof", true)
       .order("created_at", { ascending: false });
