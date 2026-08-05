@@ -4,6 +4,7 @@ import { toast } from "sonner";
 
 import { ForgotDialog } from "@/components/AppLockGate";
 import { LockSecretFields } from "@/components/LockSecretFields";
+import { PatternLock } from "@/components/PatternLock";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -313,7 +314,6 @@ function LockSecretFieldsCurrent({
   value: string;
   onChange: (v: string) => void;
 }) {
-  const { PatternLock } = require0();
   if (method === "pattern") return <PatternLock value={value} onChange={onChange} size={180} />;
   const isPin = method !== "password";
   const len = method === "pin4" ? 4 : 6;
