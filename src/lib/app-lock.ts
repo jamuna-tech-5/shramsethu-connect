@@ -68,7 +68,12 @@ export function readLock(): LockConfig | null {
     if (!raw) return null;
     const cfg = JSON.parse(raw) as LockConfig;
     if (!cfg || typeof cfg.hash !== "string" || !cfg.method) return null;
-    return { failures: 0, iterations: ITERATIONS, biometric: false, ...cfg };
+    return {
+      ...cfg,
+      failures: cfg.failures ?? 0,
+      iterations: cfg.iterations ?? ITERATIONS,
+      biometric: cfg.biometric ?? false,
+    };
   } catch {
     return null;
   }
