@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as ResetLockRouteImport } from './routes/reset-lock'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AppRouteImport } from './routes/app'
@@ -26,6 +27,11 @@ import { Route as AppGigscoreRouteImport } from './routes/app.gigscore'
 import { Route as AppDocumentsRouteImport } from './routes/app.documents'
 import { Route as AppChargingRouteImport } from './routes/app.charging'
 
+const ResetLockRoute = ResetLockRouteImport.update({
+  id: '/reset-lock',
+  path: '/reset-lock',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const OnboardingRoute = OnboardingRouteImport.update({
   id: '/onboarding',
   path: '/onboarding',
@@ -113,6 +119,7 @@ export interface FileRoutesByFullPath {
   '/app': typeof AppRouteWithChildren
   '/auth': typeof AuthRoute
   '/onboarding': typeof OnboardingRoute
+  '/reset-lock': typeof ResetLockRoute
   '/app/charging': typeof AppChargingRoute
   '/app/documents': typeof AppDocumentsRoute
   '/app/gigscore': typeof AppGigscoreRoute
@@ -130,6 +137,7 @@ export interface FileRoutesByTo {
   '/admin': typeof AdminRoute
   '/auth': typeof AuthRoute
   '/onboarding': typeof OnboardingRoute
+  '/reset-lock': typeof ResetLockRoute
   '/app/charging': typeof AppChargingRoute
   '/app/documents': typeof AppDocumentsRoute
   '/app/gigscore': typeof AppGigscoreRoute
@@ -149,6 +157,7 @@ export interface FileRoutesById {
   '/app': typeof AppRouteWithChildren
   '/auth': typeof AuthRoute
   '/onboarding': typeof OnboardingRoute
+  '/reset-lock': typeof ResetLockRoute
   '/app/charging': typeof AppChargingRoute
   '/app/documents': typeof AppDocumentsRoute
   '/app/gigscore': typeof AppGigscoreRoute
@@ -169,6 +178,7 @@ export interface FileRouteTypes {
     | '/app'
     | '/auth'
     | '/onboarding'
+    | '/reset-lock'
     | '/app/charging'
     | '/app/documents'
     | '/app/gigscore'
@@ -186,6 +196,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/auth'
     | '/onboarding'
+    | '/reset-lock'
     | '/app/charging'
     | '/app/documents'
     | '/app/gigscore'
@@ -204,6 +215,7 @@ export interface FileRouteTypes {
     | '/app'
     | '/auth'
     | '/onboarding'
+    | '/reset-lock'
     | '/app/charging'
     | '/app/documents'
     | '/app/gigscore'
@@ -223,10 +235,18 @@ export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   AuthRoute: typeof AuthRoute
   OnboardingRoute: typeof OnboardingRoute
+  ResetLockRoute: typeof ResetLockRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/reset-lock': {
+      id: '/reset-lock'
+      path: '/reset-lock'
+      fullPath: '/reset-lock'
+      preLoaderRoute: typeof ResetLockRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/onboarding': {
       id: '/onboarding'
       path: '/onboarding'
@@ -378,6 +398,7 @@ const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   AuthRoute: AuthRoute,
   OnboardingRoute: OnboardingRoute,
+  ResetLockRoute: ResetLockRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

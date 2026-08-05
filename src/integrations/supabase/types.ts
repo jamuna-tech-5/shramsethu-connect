@@ -44,6 +44,36 @@ export type Database = {
         }
         Relationships: []
       }
+      app_lock_resets: {
+        Row: {
+          created_at: string
+          expires_at: string
+          id: string
+          phone: string
+          token_hash: string
+          used_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          expires_at: string
+          id?: string
+          phone: string
+          token_hash: string
+          used_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          phone?: string
+          token_hash?: string
+          used_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       documents: {
         Row: {
           ai_verified_at: string | null

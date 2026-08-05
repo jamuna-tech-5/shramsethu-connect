@@ -13,6 +13,7 @@ import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { StoreProvider } from "../lib/store";
 import { I18nProvider } from "../lib/i18n";
+import { AppLockGate } from "../components/AppLockGate";
 import { Toaster } from "sonner";
 
 function NotFoundComponent() {
@@ -130,7 +131,9 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <I18nProvider>
         <StoreProvider>
-          <Outlet />
+          <AppLockGate>
+            <Outlet />
+          </AppLockGate>
           <Toaster position="top-right" richColors />
         </StoreProvider>
       </I18nProvider>

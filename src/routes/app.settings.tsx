@@ -4,6 +4,7 @@ import { toast } from "sonner";
 
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { PageHeader } from "@/components/PageHeader";
+import { AppSecuritySection } from "@/components/AppSecuritySection";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useStore } from "@/lib/store";
@@ -45,6 +46,8 @@ function SettingsPage() {
         <SettingCard icon={Shield} title="Privacy" description="Share location only while on duty.">
           <Row label="Location sharing" checked={prefs.locationSharing} onChange={(v) => setPref("locationSharing", v)} />
         </SettingCard>
+
+        <AppSecuritySection phone={profile?.phone} fullName={profile?.fullName} />
 
         <SettingCard icon={UserCog} title="Account" description="Manage your ShramSethu account.">
           <div className="mt-4 flex flex-wrap gap-2">
