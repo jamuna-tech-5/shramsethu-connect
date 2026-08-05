@@ -161,11 +161,9 @@ export async function replaceSecret(method: LockMethod, secret: string) {
   const salt = randomSalt();
   const hash = await hashSecret(secret, salt);
   write({
-    enabled: true,
     biometric: cfg?.biometric ?? false,
     credentialId: cfg?.credentialId,
     phone: cfg?.phone,
-    ...cfg,
     method,
     salt,
     hash,
@@ -173,7 +171,7 @@ export async function replaceSecret(method: LockMethod, secret: string) {
     failures: 0,
     lockedUntil: undefined,
     enabled: true,
-  } as LockConfig);
+  });
   markUnlocked();
 }
 
