@@ -35,6 +35,10 @@ export function AppLockGate({ children }: { children: ReactNode }) {
     setUnlocked(isUnlocked());
   }, []);
 
+  // The recovery page must stay reachable while the app is locked.
+  const isRecoveryRoute =
+    typeof window !== "undefined" && window.location.pathname.startsWith("/reset-lock");
+
   useEffect(() => {
     sync();
     setReady(true);
@@ -55,7 +59,7 @@ export function AppLockGate({ children }: { children: ReactNode }) {
     );
   }
 
-  const locked = !!cfg?.enabled && !unlocked;
+  const locked = !!cfg?.enabled && !unlocked && !isRecoveryRoute;
   if (!locked) return <>{children}</>;
   return <LockScreen cfg={cfg!} onUnlocked={sync} />;
 }
