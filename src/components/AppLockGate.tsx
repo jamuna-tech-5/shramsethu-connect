@@ -13,36 +13,48 @@ import {
   LOCK_EVENT,
   METHOD_LABEL,
   isUnlocked,
+  loadLock,
   lockRemainingMs,
-  readLock,
   verifyBiometric,
   verifySecret,
   type LockConfig,
 } from "@/lib/app-lock";
 import { requestAppLockReset } from "@/lib/app-lock.functions";
+import { useStore } from "@/lib/store";
 
 /**
- * Gates the whole app behind the device App Lock screen when enabled.
- * Client-only: the lock state lives in localStorage/sessionStorage.
+ * Gates the app behind the signed-in user's OWN App Lock screen.
+ * Nothing is shown before sign-in, and one account's lock never applies to
+ * another: the config is loaded from that user's database row.
  */
 export function AppLockGate({ children }: { children: ReactNode }) {
-  const [ready, setReady] = useState(false);
+  const { session, loading, profile } = useStore();
+  const userId = session?.user?.id ?? "";
   const [cfg, setCfg] = useState<LockConfig | null>(null);
+  const [checked, setChecked] = useState(false);
   const [unlocked, setUnlocked] = useState(true);
 
-  const sync = useCallback(() => {
-    setCfg(readLock());
-    setUnlocked(isUnlocked());
-  }, []);
+  const sync = useCallback(async () => {
+    if (!userId) {
+      setCfg(null);
+      setUnlocked(true);
+      setChecked(true);
+      return;
+    }
+    const next = await loadLock(userId, profile?.phone);
+    setCfg(next);
+    setUnlocked(isUnlocked(userId));
+    setChecked(true);
+  }, [userId, profile?.phone]);
 
   // The recovery page must stay reachable while the app is locked.
   const isRecoveryRoute =
     typeof window !== "undefined" && window.location.pathname.startsWith("/reset-lock");
 
   useEffect(() => {
-    sync();
-    setReady(true);
-    const onEvt = () => sync();
+    setChecked(false);
+    void sync();
+    const onEvt = () => void sync();
     window.addEventListener(LOCK_EVENT, onEvt);
     window.addEventListener("storage", onEvt);
     return () => {
@@ -51,7 +63,10 @@ export function AppLockGate({ children }: { children: ReactNode }) {
     };
   }, [sync]);
 
-  if (!ready) {
+  // Not signed in → normal Login / Worker / Admin flow.
+  if (loading || !userId || isRecoveryRoute) return <>{children}</>;
+
+  if (!checked) {
     return (
       <div className="grid min-h-dvh place-items-center bg-background">
         <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -59,9 +74,9 @@ export function AppLockGate({ children }: { children: ReactNode }) {
     );
   }
 
-  const locked = !!cfg?.enabled && !unlocked && !isRecoveryRoute;
+  const locked = !!cfg?.enabled && !unlocked;
   if (!locked) return <>{children}</>;
-  return <LockScreen cfg={cfg!} onUnlocked={sync} />;
+  return <LockScreen cfg={cfg!} onUnlocked={() => void sync()} />;
 }
 
 function LockScreen({ cfg, onUnlocked }: { cfg: LockConfig; onUnlocked: () => void }) {
@@ -85,7 +100,7 @@ function LockScreen({ cfg, onUnlocked }: { cfg: LockConfig; onUnlocked: () => vo
       return;
     }
     setBusy(true);
-    const res = await verifySecret(value);
+    const res = await verifySecret(cfg, value);
     setBusy(false);
     if (res.ok) {
       setError(null);
@@ -94,12 +109,14 @@ function LockScreen({ cfg, onUnlocked }: { cfg: LockConfig; onUnlocked: () => vo
     }
     setSecret("");
     setError(res.message ?? "Incorrect credentials.");
-    setWait(lockRemainingMs(readLock()));
+    setWait(res.lockedUntil ? Math.max(0, res.lockedUntil - Date.now()) : 0);
+    cfg.failures = res.failures ?? cfg.failures;
+    cfg.lockedUntil = res.lockedUntil;
   };
 
   const biometric = async () => {
     try {
-      const ok = await verifyBiometric();
+      const ok = await verifyBiometric(cfg);
       if (ok) onUnlocked();
       else setError("Biometric unlock failed. Use your " + METHOD_LABEL[cfg.method].toLowerCase() + ".");
     } catch {
@@ -184,7 +201,7 @@ function LockScreen({ cfg, onUnlocked }: { cfg: LockConfig; onUnlocked: () => vo
         </form>
       </motion.div>
 
-      <ForgotDialog open={forgotOpen} onOpenChange={setForgotOpen} defaultPhone={cfg.phone ?? ""} method={cfg.method} />
+      <ForgotDialog open={forgotOpen} onOpenChange={setForgotOpen} maskedPhone={cfg.phone} method={cfg.method} />
     </div>
   );
 }
@@ -192,31 +209,29 @@ function LockScreen({ cfg, onUnlocked }: { cfg: LockConfig; onUnlocked: () => vo
 export function ForgotDialog({
   open,
   onOpenChange,
-  defaultPhone,
+  maskedPhone,
   method,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  defaultPhone: string;
+  maskedPhone?: string;
   method: LockConfig["method"];
 }) {
-  const [phone, setPhone] = useState(defaultPhone);
   const [busy, setBusy] = useState(false);
   const [link, setLink] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
-      setPhone(defaultPhone);
       setLink(null);
       setMsg(null);
     }
-  }, [open, defaultPhone]);
+  }, [open]);
 
   const send = async () => {
     setBusy(true);
     try {
-      const res = await requestAppLockReset({ data: { phone, origin: window.location.origin } });
+      const res = await requestAppLockReset({ data: { origin: window.location.origin } });
       if (!res.ok) {
         toast.error(res.error);
         return;
@@ -243,18 +258,9 @@ export function ForgotDialog({
         </DialogHeader>
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">
-            We'll send a secure, single-use recovery link to the mobile number registered on your ShramSethu profile.
+            We'll send a secure, single-use recovery link to the mobile number registered on your ShramSethu profile
+            {maskedPhone ? ` (${maskedPhone})` : ""}. The link resets only your own app lock.
           </p>
-          <div className="space-y-1.5">
-            <Label htmlFor="recoverPhone">Registered mobile number</Label>
-            <Input
-              id="recoverPhone"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="+91 98xxx xxxxx"
-              inputMode="tel"
-            />
-          </div>
           {msg && <p className="text-xs text-muted-foreground">{msg}</p>}
           {link && (
             <div className="rounded-xl border bg-muted/40 p-3">

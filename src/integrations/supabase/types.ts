@@ -726,6 +726,45 @@ export type Database = {
           },
         ]
       }
+      user_app_locks: {
+        Row: {
+          biometric_enabled: boolean
+          created_at: string
+          credential_id: string | null
+          enabled: boolean
+          iterations: number
+          method: string
+          salt: string | null
+          secret_hash: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          biometric_enabled?: boolean
+          created_at?: string
+          credential_id?: string | null
+          enabled?: boolean
+          iterations?: number
+          method?: string
+          salt?: string | null
+          secret_hash?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          biometric_enabled?: boolean
+          created_at?: string
+          credential_id?: string | null
+          enabled?: boolean
+          iterations?: number
+          method?: string
+          salt?: string | null
+          secret_hash?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string

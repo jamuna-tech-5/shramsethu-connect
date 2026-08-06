@@ -1,13 +1,19 @@
-// Device-level App Lock.
+// Per-user App Lock.
 //
-// The lock screen runs BEFORE any Supabase session exists (it gates the
-// Worker/Admin selection screen), so the credential is stored on the device —
-// never in plain text. We keep a PBKDF2-SHA256 hash + random salt in
-// localStorage and compare hashes on unlock.
+// Each account has its OWN app lock row in the database
+// (public.user_app_locks, RLS-scoped to auth.uid()), so one user's
+// password / PIN / pattern can never unlock another user's account.
+// The credential itself is never stored: we keep a PBKDF2-SHA256 hash and a
+// random salt, computed in the browser, and compare hashes on unlock.
+// Attempt throttling and the "unlocked for this session" flag are device-local
+// and namespaced by user id.
+
+import { supabase } from "@/integrations/supabase/client";
 
 export type LockMethod = "password" | "pin4" | "pin6" | "pattern";
 
 export type LockConfig = {
+  userId: string;
   enabled: boolean;
   method: LockMethod;
   salt: string;
@@ -20,8 +26,6 @@ export type LockConfig = {
   lockedUntil?: number;
 };
 
-const KEY = "ss_applock";
-const SESSION_KEY = "ss_applock_unlocked";
 export const LOCK_EVENT = "shramsethu:applock";
 const ITERATIONS = 150_000;
 export const MAX_ATTEMPTS = 5;
@@ -35,6 +39,17 @@ export const METHOD_LABEL: Record<LockMethod, string> = {
 
 function browser() {
   return typeof window !== "undefined";
+}
+
+function sessionKey(userId: string) {
+  return `ss_applock_unlocked:${userId}`;
+}
+function attemptsKey(userId: string) {
+  return `ss_applock_attempts:${userId}`;
+}
+
+function emit() {
+  if (browser()) window.dispatchEvent(new CustomEvent(LOCK_EVENT));
 }
 
 function toB64(buf: ArrayBuffer) {
@@ -61,83 +76,145 @@ export async function hashSecret(secret: string, salt: string, iterations = ITER
   return toB64(bits);
 }
 
-export function readLock(): LockConfig | null {
-  if (!browser()) return null;
+/* ------------------------------- attempts --------------------------------- */
+
+type Attempts = { failures: number; lockedUntil?: number };
+
+function readAttempts(userId: string): Attempts {
+  if (!browser()) return { failures: 0 };
   try {
-    const raw = window.localStorage.getItem(KEY);
-    if (!raw) return null;
-    const cfg = JSON.parse(raw) as LockConfig;
-    if (!cfg || typeof cfg.hash !== "string" || !cfg.method) return null;
-    return {
-      ...cfg,
-      failures: cfg.failures ?? 0,
-      iterations: cfg.iterations ?? ITERATIONS,
-      biometric: cfg.biometric ?? false,
-    };
+    const raw = window.localStorage.getItem(attemptsKey(userId));
+    if (!raw) return { failures: 0 };
+    const v = JSON.parse(raw) as Attempts;
+    return { failures: v.failures ?? 0, lockedUntil: v.lockedUntil };
   } catch {
-    return null;
+    return { failures: 0 };
   }
 }
 
-function write(cfg: LockConfig | null) {
+function writeAttempts(userId: string, v: Attempts) {
   if (!browser()) return;
-  if (cfg) window.localStorage.setItem(KEY, JSON.stringify(cfg));
-  else window.localStorage.removeItem(KEY);
-  window.dispatchEvent(new CustomEvent(LOCK_EVENT));
+  if (v.failures === 0 && !v.lockedUntil) window.localStorage.removeItem(attemptsKey(userId));
+  else window.localStorage.setItem(attemptsKey(userId), JSON.stringify(v));
 }
 
-export function saveLock(cfg: LockConfig) {
-  write(cfg);
+/* --------------------------------- load ----------------------------------- */
+
+type Row = {
+  user_id: string;
+  enabled: boolean;
+  method: string;
+  salt: string | null;
+  secret_hash: string | null;
+  iterations: number;
+  biometric_enabled: boolean;
+  credential_id: string | null;
+};
+
+function toConfig(row: Row, phone?: string): LockConfig | null {
+  if (!row.salt || !row.secret_hash) return null;
+  const attempts = readAttempts(row.user_id);
+  return {
+    userId: row.user_id,
+    enabled: row.enabled,
+    method: (row.method as LockMethod) ?? "pin4",
+    salt: row.salt,
+    hash: row.secret_hash,
+    iterations: row.iterations ?? ITERATIONS,
+    biometric: row.biometric_enabled,
+    credentialId: row.credential_id ?? undefined,
+    phone,
+    failures: attempts.failures,
+    lockedUntil: attempts.lockedUntil,
+  };
 }
+
+/** Loads the app lock config for one specific user. Never cross-user. */
+export async function loadLock(userId: string, phone?: string): Promise<LockConfig | null> {
+  if (!userId) return null;
+  const { data, error } = await supabase
+    .from("user_app_locks")
+    .select("user_id, enabled, method, salt, secret_hash, iterations, biometric_enabled, credential_id")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error || !data) return null;
+  return toConfig(data as Row, phone);
+}
+
+async function upsert(userId: string, patch: Record<string, unknown>) {
+  const { error } = await supabase
+    .from("user_app_locks")
+    .upsert({ user_id: userId, ...patch }, { onConflict: "user_id" });
+  if (error) throw new Error(error.message);
+  emit();
+}
+
+/* --------------------------------- writes --------------------------------- */
 
 export async function setupLock(opts: {
+  userId: string;
   method: LockMethod;
   secret: string;
-  phone?: string;
   biometric?: boolean;
   credentialId?: string;
 }) {
   const salt = randomSalt();
   const hash = await hashSecret(opts.secret, salt);
-  write({
+  await upsert(opts.userId, {
     enabled: true,
     method: opts.method,
     salt,
-    hash,
+    secret_hash: hash,
     iterations: ITERATIONS,
-    biometric: !!opts.biometric,
-    credentialId: opts.credentialId,
-    phone: opts.phone,
-    failures: 0,
+    biometric_enabled: !!opts.biometric,
+    credential_id: opts.credentialId ?? null,
   });
-  markUnlocked();
+  writeAttempts(opts.userId, { failures: 0 });
+  markUnlocked(opts.userId);
 }
 
-export function disableLock() {
-  write(null);
-  if (browser()) window.sessionStorage.removeItem(SESSION_KEY);
+export async function replaceSecret(userId: string, method: LockMethod, secret: string) {
+  const salt = randomSalt();
+  const hash = await hashSecret(secret, salt);
+  await upsert(userId, { enabled: true, method, salt, secret_hash: hash, iterations: ITERATIONS });
+  writeAttempts(userId, { failures: 0 });
+  markUnlocked(userId);
 }
 
-export function setEnabled(enabled: boolean) {
-  const cfg = readLock();
-  if (!cfg) return;
-  write({ ...cfg, enabled });
-  if (!enabled && browser()) window.sessionStorage.removeItem(SESSION_KEY);
+export async function setEnabled(userId: string, enabled: boolean) {
+  await upsert(userId, { enabled });
+  if (!enabled && browser()) window.sessionStorage.removeItem(sessionKey(userId));
+  emit();
 }
 
-export function setBiometric(on: boolean, credentialId?: string) {
-  const cfg = readLock();
-  if (!cfg) return;
-  write({ ...cfg, biometric: on, credentialId: on ? (credentialId ?? cfg.credentialId) : undefined });
+export async function disableLock(userId: string) {
+  const { error } = await supabase.from("user_app_locks").delete().eq("user_id", userId);
+  if (error) throw new Error(error.message);
+  if (browser()) {
+    window.sessionStorage.removeItem(sessionKey(userId));
+    window.localStorage.removeItem(attemptsKey(userId));
+  }
+  emit();
 }
+
+export async function setBiometric(userId: string, on: boolean, credentialId?: string) {
+  await upsert(userId, {
+    biometric_enabled: on,
+    credential_id: on ? (credentialId ?? null) : null,
+  });
+}
+
+/* -------------------------------- verify ---------------------------------- */
 
 export function lockRemainingMs(cfg: LockConfig | null): number {
   if (!cfg?.lockedUntil) return 0;
   return Math.max(0, cfg.lockedUntil - Date.now());
 }
 
-export async function verifySecret(secret: string): Promise<{ ok: boolean; message?: string }> {
-  const cfg = readLock();
+export async function verifySecret(
+  cfg: LockConfig | null,
+  secret: string,
+): Promise<{ ok: boolean; message?: string; failures?: number; lockedUntil?: number }> {
   if (!cfg) return { ok: false, message: "App Lock is not configured." };
   const wait = lockRemainingMs(cfg);
   if (wait > 0) {
@@ -145,58 +222,42 @@ export async function verifySecret(secret: string): Promise<{ ok: boolean; messa
   }
   const hash = await hashSecret(secret, cfg.salt, cfg.iterations);
   if (hash === cfg.hash) {
-    write({ ...cfg, failures: 0, lockedUntil: undefined });
-    markUnlocked();
-    return { ok: true };
+    writeAttempts(cfg.userId, { failures: 0 });
+    markUnlocked(cfg.userId);
+    return { ok: true, failures: 0 };
   }
   const failures = (cfg.failures ?? 0) + 1;
   const over = failures - MAX_ATTEMPTS;
   const lockedUntil = over >= 0 ? Date.now() + Math.min(5, over + 1) * 30_000 : undefined;
-  write({ ...cfg, failures, lockedUntil });
+  writeAttempts(cfg.userId, { failures, lockedUntil });
   return {
     ok: false,
+    failures,
+    lockedUntil,
     message: lockedUntil
       ? `Too many incorrect attempts. Locked for ${Math.round((lockedUntil - Date.now()) / 1000)}s.`
       : `Incorrect ${METHOD_LABEL[cfg.method].toLowerCase()}. ${MAX_ATTEMPTS - failures} attempt(s) left.`,
   };
 }
 
-export async function replaceSecret(method: LockMethod, secret: string) {
-  const cfg = readLock();
-  const salt = randomSalt();
-  const hash = await hashSecret(secret, salt);
-  write({
-    biometric: cfg?.biometric ?? false,
-    credentialId: cfg?.credentialId,
-    phone: cfg?.phone,
-    method,
-    salt,
-    hash,
-    iterations: ITERATIONS,
-    failures: 0,
-    lockedUntil: undefined,
-    enabled: true,
-  });
-  markUnlocked();
+/* ------------------------------ session state ----------------------------- */
+
+export function isUnlocked(userId: string): boolean {
+  if (!browser() || !userId) return true;
+  return window.sessionStorage.getItem(sessionKey(userId)) === "1";
 }
 
-export function isUnlocked(): boolean {
-  if (!browser()) return true;
-  const cfg = readLock();
-  if (!cfg?.enabled) return true;
-  return window.sessionStorage.getItem(SESSION_KEY) === "1";
+export function markUnlocked(userId: string) {
+  if (!browser() || !userId) return;
+  window.sessionStorage.setItem(sessionKey(userId), "1");
+  emit();
 }
 
-export function markUnlocked() {
-  if (!browser()) return;
-  window.sessionStorage.setItem(SESSION_KEY, "1");
-  window.dispatchEvent(new CustomEvent(LOCK_EVENT));
-}
-
-export function relock() {
-  if (!browser()) return;
-  window.sessionStorage.removeItem(SESSION_KEY);
-  window.dispatchEvent(new CustomEvent(LOCK_EVENT));
+/** Clears only this user's unlock session (used on sign-out). */
+export function relock(userId: string) {
+  if (!browser() || !userId) return;
+  window.sessionStorage.removeItem(sessionKey(userId));
+  emit();
 }
 
 /* ---------------- Biometric / platform authenticator (WebAuthn) ------------- */
@@ -234,10 +295,8 @@ export async function registerBiometric(label: string): Promise<string | null> {
   return toB64(cred.rawId);
 }
 
-export async function verifyBiometric(): Promise<boolean> {
-  if (!browser()) return false;
-  const cfg = readLock();
-  if (!cfg?.biometric || !cfg.credentialId) return false;
+export async function verifyBiometric(cfg: LockConfig | null): Promise<boolean> {
+  if (!browser() || !cfg?.biometric || !cfg.credentialId) return false;
   const challenge = new Uint8Array(32);
   crypto.getRandomValues(challenge);
   const raw = Uint8Array.from(atob(cfg.credentialId), (c) => c.charCodeAt(0));
@@ -250,7 +309,7 @@ export async function verifyBiometric(): Promise<boolean> {
     },
   });
   if (!assertion) return false;
-  markUnlocked();
+  markUnlocked(cfg.userId);
   return true;
 }
 
