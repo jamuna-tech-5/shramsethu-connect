@@ -193,6 +193,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         await lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin });
       },
       signOut: async () => {
+        // Clear only this user's App Lock unlock session.
+        const uid = session?.user?.id;
+        if (uid) {
+          const { relock } = await import("@/lib/app-lock");
+          relock(uid);
+        }
         await supabase.auth.signOut();
         setProfile(null);
       },
@@ -220,6 +226,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
       },
       reset: async () => {
+        const uid = session?.user?.id;
+        if (uid) {
+          const { relock } = await import("@/lib/app-lock");
+          relock(uid);
+        }
         await supabase.auth.signOut();
         setProfile(null);
       },
