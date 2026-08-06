@@ -15,7 +15,7 @@ import {
   METHOD_LABEL,
   disableLock,
   isBiometricSupported,
-  readLock,
+  loadLock,
   registerBiometric,
   replaceSecret,
   setBiometric,
@@ -26,51 +26,63 @@ import {
   type LockConfig,
   type LockMethod,
 } from "@/lib/app-lock";
+import { useStore } from "@/lib/store";
 
 const METHODS: LockMethod[] = ["password", "pin4", "pin6", "pattern"];
 
+/** App Security settings for the currently signed-in user only. */
 export function AppSecuritySection({ phone, fullName }: { phone?: string; fullName?: string }) {
+  const { session } = useStore();
+  const userId = session?.user?.id ?? "";
   const [cfg, setCfg] = useState<LockConfig | null>(null);
   const [bioSupported, setBioSupported] = useState(false);
   const [setupOpen, setSetupOpen] = useState(false);
   const [changeOpen, setChangeOpen] = useState(false);
   const [forgotOpen, setForgotOpen] = useState(false);
 
-  const sync = useCallback(() => setCfg(readLock()), []);
+  const sync = useCallback(async () => {
+    if (!userId) return setCfg(null);
+    setCfg(await loadLock(userId, phone));
+  }, [userId, phone]);
 
   useEffect(() => {
-    sync();
+    void sync();
     isBiometricSupported().then(setBioSupported);
-    const onEvt = () => sync();
+    const onEvt = () => void sync();
     window.addEventListener(LOCK_EVENT, onEvt);
     return () => window.removeEventListener(LOCK_EVENT, onEvt);
   }, [sync]);
 
   const enabled = !!cfg?.enabled;
 
-  const toggle = (v: boolean) => {
+  const toggle = async (v: boolean) => {
     if (v && !cfg) {
       setSetupOpen(true);
       return;
     }
-    setEnabled(v);
-    toast.success(v ? "App Lock enabled" : "App Lock disabled");
+    if (!userId) return;
+    try {
+      await setEnabled(userId, v);
+      toast.success(v ? "App Lock enabled" : "App Lock disabled");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not update App Lock");
+    }
   };
 
   const toggleBiometric = async (v: boolean) => {
-    if (!cfg) return;
-    if (!v) {
-      setBiometric(false);
-      toast.success("Biometric unlock disabled");
-      return;
-    }
+    if (!cfg || !userId) return;
     try {
+      if (!v) {
+        await setBiometric(userId, false);
+        toast.success("Biometric unlock disabled");
+        return;
+      }
       const id = await registerBiometric(fullName || "ShramSethu user");
       if (!id) {
         toast.error("Biometric enrolment was cancelled.");
         return;
       }
-      setBiometric(true, id);
+      await setBiometric(userId, true, id);
       toast.success("Fingerprint / Face ID enabled");
     } catch {
       toast.error("This device declined biometric enrolment.");
@@ -86,7 +98,7 @@ export function AppSecuritySection({ phone, fullName }: { phone?: string; fullNa
         <div className="min-w-0">
           <h3 className="text-sm font-semibold">App Security</h3>
           <p className="text-xs text-muted-foreground">
-            Lock ShramSethu on this device with a password, PIN, pattern or biometrics.
+            Your own App Lock — a password, PIN, pattern or biometrics that protects only your account.
           </p>
         </div>
       </div>
@@ -98,7 +110,7 @@ export function AppSecuritySection({ phone, fullName }: { phone?: string; fullNa
             {enabled ? `Active · ${METHOD_LABEL[cfg!.method]}` : "Off — the app opens without authentication"}
           </div>
         </div>
-        <Switch checked={enabled} onCheckedChange={toggle} />
+        <Switch checked={enabled} onCheckedChange={(v) => void toggle(v)} />
       </div>
 
       {cfg && (
@@ -112,7 +124,11 @@ export function AppSecuritySection({ phone, fullName }: { phone?: string; fullNa
                   : "Not supported on this device"}
               </div>
             </div>
-            <Switch checked={!!cfg.biometric} onCheckedChange={toggleBiometric} disabled={!bioSupported} />
+            <Switch
+              checked={!!cfg.biometric}
+              onCheckedChange={(v) => void toggleBiometric(v)}
+              disabled={!bioSupported}
+            />
           </div>
 
           <div className="mt-3 flex flex-wrap gap-2">
@@ -128,10 +144,13 @@ export function AppSecuritySection({ phone, fullName }: { phone?: string; fullNa
             <Button
               variant="ghost"
               className="rounded-full text-destructive hover:text-destructive"
-              onClick={() => {
-                if (confirm("Remove App Lock from this device?")) {
-                  disableLock();
+              onClick={async () => {
+                if (!confirm("Remove your App Lock?")) return;
+                try {
+                  await disableLock(userId);
                   toast.success("App Lock removed");
+                } catch (e) {
+                  toast.error(e instanceof Error ? e.message : "Could not remove App Lock");
                 }
               }}
             >
@@ -144,7 +163,7 @@ export function AppSecuritySection({ phone, fullName }: { phone?: string; fullNa
       <SetupDialog
         open={setupOpen}
         onOpenChange={setSetupOpen}
-        phone={phone}
+        userId={userId}
         existing={cfg}
         onDone={() => toast.success("App Lock is active")}
       />
@@ -152,7 +171,7 @@ export function AppSecuritySection({ phone, fullName }: { phone?: string; fullNa
       <ForgotDialog
         open={forgotOpen}
         onOpenChange={setForgotOpen}
-        defaultPhone={cfg?.phone || phone || ""}
+        maskedPhone={cfg?.phone || phone}
         method={cfg?.method ?? "password"}
       />
     </div>
@@ -162,13 +181,13 @@ export function AppSecuritySection({ phone, fullName }: { phone?: string; fullNa
 function SetupDialog({
   open,
   onOpenChange,
-  phone,
+  userId,
   existing,
   onDone,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  phone?: string;
+  userId: string;
   existing: LockConfig | null;
   onDone: () => void;
 }) {
@@ -186,14 +205,23 @@ function SetupDialog({
   }, [open, existing]);
 
   const save = async () => {
+    if (!userId) return toast.error("Sign in again to change App Security.");
     const err = validateSecret(method, secret);
     if (err) return toast.error(err);
     if (secret !== confirm) return toast.error("The two entries do not match.");
     setBusy(true);
     try {
-      await setupLock({ method, secret, phone, biometric: existing?.biometric, credentialId: existing?.credentialId });
+      await setupLock({
+        userId,
+        method,
+        secret,
+        biometric: existing?.biometric,
+        credentialId: existing?.credentialId,
+      });
       onOpenChange(false);
       onDone();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not save App Lock");
     } finally {
       setBusy(false);
     }
@@ -225,8 +253,8 @@ function SetupDialog({
             onConfirm={setConfirm}
           />
           <p className="text-[11px] text-muted-foreground">
-            Stored on this device as a salted PBKDF2-SHA256 hash — never in plain text. Recovery uses the mobile number
-            on your profile.
+            Saved to your account as a salted PBKDF2-SHA256 hash — never in plain text, and never shared with other
+            users. Recovery uses the mobile number on your profile.
           </p>
           <Button onClick={save} disabled={busy} className="w-full rounded-xl gradient-primary text-white">
             {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null} Save and enable App Lock
@@ -265,14 +293,16 @@ function ChangeDialog({
   const save = async () => {
     setBusy(true);
     try {
-      const check = await verifySecret(current);
+      const check = await verifySecret(cfg, current);
       if (!check.ok) return toast.error(check.message ?? `Current ${label} is incorrect.`);
       const err = validateSecret(cfg.method, secret);
       if (err) return toast.error(err);
       if (secret !== confirm) return toast.error("The two entries do not match.");
-      await replaceSecret(cfg.method, secret);
+      await replaceSecret(cfg.userId, cfg.method, secret);
       onOpenChange(false);
       toast.success(`Your ${label} was updated`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not update your credential");
     } finally {
       setBusy(false);
     }
@@ -321,10 +351,10 @@ function LockSecretFieldsCurrent({
     <input
       type="password"
       inputMode={isPin ? "numeric" : "text"}
-      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       value={value}
       onChange={(e) => onChange(isPin ? e.target.value.replace(/\D/g, "").slice(0, len) : e.target.value)}
-      placeholder={`Current ${METHOD_LABEL[method].toLowerCase()}`}
+      placeholder={isPin ? "•".repeat(len) : "Enter your current password"}
       autoComplete="off"
     />
   );
