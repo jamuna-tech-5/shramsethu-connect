@@ -8,7 +8,7 @@ import { Logo } from "@/components/Logo";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { METHOD_LABEL, readLock, setupLock, validateSecret, type LockMethod } from "@/lib/app-lock";
+import { METHOD_LABEL, hashSecret, randomSalt, validateSecret, type LockMethod } from "@/lib/app-lock";
 import { consumeAppLockReset, verifyAppLockReset } from "@/lib/app-lock.functions";
 
 const METHODS: LockMethod[] = ["password", "pin4", "pin6", "pattern"];
@@ -49,8 +49,6 @@ function ResetLockPage() {
   useEffect(() => {
     const t = new URLSearchParams(window.location.search).get("token") ?? "";
     setToken(t);
-    const existing = readLock();
-    if (existing) setMethod(existing.method);
     if (!t) {
       setState("invalid");
       setError("This recovery link is missing its token.");
@@ -60,6 +58,7 @@ function ResetLockPage() {
       .then((res) => {
         if (res.ok) {
           setMasked(res.maskedPhone);
+          if (res.method) setMethod(res.method as LockMethod);
           setState("ok");
         } else {
           setError(res.error);
@@ -78,15 +77,18 @@ function ResetLockPage() {
     if (secret !== confirm) return toast.error("The two entries do not match.");
     setBusy(true);
     try {
-      const used = await consumeAppLockReset({ data: { token } });
+      // Hash on-device: the plain credential never leaves the browser.
+      const salt = randomSalt();
+      const hash = await hashSecret(secret, salt);
+      const used = await consumeAppLockReset({
+        data: { token, method, salt, hash, iterations: 150_000 },
+      });
       if (!used.ok) {
         toast.error(used.error);
         setState("invalid");
         setError(used.error);
         return;
       }
-      const existing = readLock();
-      await setupLock({ method, secret, phone: existing?.phone, biometric: false });
       toast.success("Your app lock credential was reset");
       navigate({ to: "/auth" });
     } catch (e) {
