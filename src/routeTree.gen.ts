@@ -9,42 +9,27 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as ResetLockRouteImport } from './routes/reset-lock'
-import { Route as OnboardingRouteImport } from './routes/onboarding'
-import { Route as AuthRouteImport } from './routes/auth'
-import { Route as AppRouteImport } from './routes/app'
-import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AdminRouteImport } from './routes/admin'
+import { Route as AppRouteImport } from './routes/app'
+import { Route as AuthRouteImport } from './routes/auth'
+import { Route as OnboardingRouteImport } from './routes/onboarding'
+import { Route as ResetLockRouteImport } from './routes/reset-lock'
 import { Route as AppIndexRouteImport } from './routes/app.index'
-import { Route as AppSosRouteImport } from './routes/app.sos'
-import { Route as AppSettingsRouteImport } from './routes/app.settings'
-import { Route as AppSchemesRouteImport } from './routes/app.schemes'
-import { Route as AppProfileRouteImport } from './routes/app.profile'
-import { Route as AppLocationRouteImport } from './routes/app.location'
-import { Route as AppLoanRouteImport } from './routes/app.loan'
-import { Route as AppIncomeRouteImport } from './routes/app.income'
-import { Route as AppGigscoreRouteImport } from './routes/app.gigscore'
-import { Route as AppDocumentsRouteImport } from './routes/app.documents'
 import { Route as AppChargingRouteImport } from './routes/app.charging'
+import { Route as AppDocumentsRouteImport } from './routes/app.documents'
+import { Route as AppGigscoreRouteImport } from './routes/app.gigscore'
+import { Route as AppIncomeRouteImport } from './routes/app.income'
+import { Route as AppLoanRouteImport } from './routes/app.loan'
+import { Route as AppLocationRouteImport } from './routes/app.location'
+import { Route as AppProfileRouteImport } from './routes/app.profile'
+import { Route as AppSchemesRouteImport } from './routes/app.schemes'
+import { Route as AppSettingsRouteImport } from './routes/app.settings'
+import { Route as AppSosRouteImport } from './routes/app.sos'
 
-const ResetLockRoute = ResetLockRouteImport.update({
-  id: '/reset-lock',
-  path: '/reset-lock',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const OnboardingRoute = OnboardingRouteImport.update({
-  id: '/onboarding',
-  path: '/onboarding',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AuthRoute = AuthRouteImport.update({
-  id: '/auth',
-  path: '/auth',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AppRoute = AppRouteImport.update({
-  id: '/app',
-  path: '/app',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminRoute = AdminRouteImport.update({
@@ -52,9 +37,24 @@ const AdminRoute = AdminRouteImport.update({
   path: '/admin',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const AppRoute = AppRouteImport.update({
+  id: '/app',
+  path: '/app',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthRoute = AuthRouteImport.update({
+  id: '/auth',
+  path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OnboardingRoute = OnboardingRouteImport.update({
+  id: '/onboarding',
+  path: '/onboarding',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ResetLockRoute = ResetLockRouteImport.update({
+  id: '/reset-lock',
+  path: '/reset-lock',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppIndexRoute = AppIndexRouteImport.update({
@@ -62,44 +62,9 @@ const AppIndexRoute = AppIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppRoute,
 } as any)
-const AppSosRoute = AppSosRouteImport.update({
-  id: '/sos',
-  path: '/sos',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppSettingsRoute = AppSettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppSchemesRoute = AppSchemesRouteImport.update({
-  id: '/schemes',
-  path: '/schemes',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppProfileRoute = AppProfileRouteImport.update({
-  id: '/profile',
-  path: '/profile',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppLocationRoute = AppLocationRouteImport.update({
-  id: '/location',
-  path: '/location',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppLoanRoute = AppLoanRouteImport.update({
-  id: '/loan',
-  path: '/loan',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppIncomeRoute = AppIncomeRouteImport.update({
-  id: '/income',
-  path: '/income',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppGigscoreRoute = AppGigscoreRouteImport.update({
-  id: '/gigscore',
-  path: '/gigscore',
+const AppChargingRoute = AppChargingRouteImport.update({
+  id: '/charging',
+  path: '/charging',
   getParentRoute: () => AppRoute,
 } as any)
 const AppDocumentsRoute = AppDocumentsRouteImport.update({
@@ -107,9 +72,44 @@ const AppDocumentsRoute = AppDocumentsRouteImport.update({
   path: '/documents',
   getParentRoute: () => AppRoute,
 } as any)
-const AppChargingRoute = AppChargingRouteImport.update({
-  id: '/charging',
-  path: '/charging',
+const AppGigscoreRoute = AppGigscoreRouteImport.update({
+  id: '/gigscore',
+  path: '/gigscore',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppIncomeRoute = AppIncomeRouteImport.update({
+  id: '/income',
+  path: '/income',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppLoanRoute = AppLoanRouteImport.update({
+  id: '/loan',
+  path: '/loan',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppLocationRoute = AppLocationRouteImport.update({
+  id: '/location',
+  path: '/location',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppProfileRoute = AppProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSchemesRoute = AppSchemesRouteImport.update({
+  id: '/schemes',
+  path: '/schemes',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSettingsRoute = AppSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSosRoute = AppSosRouteImport.update({
+  id: '/sos',
+  path: '/sos',
   getParentRoute: () => AppRoute,
 } as any)
 
@@ -240,32 +240,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/reset-lock': {
-      id: '/reset-lock'
-      path: '/reset-lock'
-      fullPath: '/reset-lock'
-      preLoaderRoute: typeof ResetLockRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/onboarding': {
-      id: '/onboarding'
-      path: '/onboarding'
-      fullPath: '/onboarding'
-      preLoaderRoute: typeof OnboardingRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/auth': {
-      id: '/auth'
-      path: '/auth'
-      fullPath: '/auth'
-      preLoaderRoute: typeof AuthRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/app': {
-      id: '/app'
-      path: '/app'
-      fullPath: '/app'
-      preLoaderRoute: typeof AppRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin': {
@@ -275,11 +254,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/app': {
+      id: '/app'
+      path: '/app'
+      fullPath: '/app'
+      preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/onboarding': {
+      id: '/onboarding'
+      path: '/onboarding'
+      fullPath: '/onboarding'
+      preLoaderRoute: typeof OnboardingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reset-lock': {
+      id: '/reset-lock'
+      path: '/reset-lock'
+      fullPath: '/reset-lock'
+      preLoaderRoute: typeof ResetLockRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/app/': {
@@ -289,60 +289,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRoute
     }
-    '/app/sos': {
-      id: '/app/sos'
-      path: '/sos'
-      fullPath: '/app/sos'
-      preLoaderRoute: typeof AppSosRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/settings': {
-      id: '/app/settings'
-      path: '/settings'
-      fullPath: '/app/settings'
-      preLoaderRoute: typeof AppSettingsRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/schemes': {
-      id: '/app/schemes'
-      path: '/schemes'
-      fullPath: '/app/schemes'
-      preLoaderRoute: typeof AppSchemesRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/profile': {
-      id: '/app/profile'
-      path: '/profile'
-      fullPath: '/app/profile'
-      preLoaderRoute: typeof AppProfileRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/location': {
-      id: '/app/location'
-      path: '/location'
-      fullPath: '/app/location'
-      preLoaderRoute: typeof AppLocationRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/loan': {
-      id: '/app/loan'
-      path: '/loan'
-      fullPath: '/app/loan'
-      preLoaderRoute: typeof AppLoanRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/income': {
-      id: '/app/income'
-      path: '/income'
-      fullPath: '/app/income'
-      preLoaderRoute: typeof AppIncomeRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/app/gigscore': {
-      id: '/app/gigscore'
-      path: '/gigscore'
-      fullPath: '/app/gigscore'
-      preLoaderRoute: typeof AppGigscoreRouteImport
+    '/app/charging': {
+      id: '/app/charging'
+      path: '/charging'
+      fullPath: '/app/charging'
+      preLoaderRoute: typeof AppChargingRouteImport
       parentRoute: typeof AppRoute
     }
     '/app/documents': {
@@ -352,11 +303,60 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppDocumentsRouteImport
       parentRoute: typeof AppRoute
     }
-    '/app/charging': {
-      id: '/app/charging'
-      path: '/charging'
-      fullPath: '/app/charging'
-      preLoaderRoute: typeof AppChargingRouteImport
+    '/app/gigscore': {
+      id: '/app/gigscore'
+      path: '/gigscore'
+      fullPath: '/app/gigscore'
+      preLoaderRoute: typeof AppGigscoreRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/income': {
+      id: '/app/income'
+      path: '/income'
+      fullPath: '/app/income'
+      preLoaderRoute: typeof AppIncomeRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/loan': {
+      id: '/app/loan'
+      path: '/loan'
+      fullPath: '/app/loan'
+      preLoaderRoute: typeof AppLoanRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/location': {
+      id: '/app/location'
+      path: '/location'
+      fullPath: '/app/location'
+      preLoaderRoute: typeof AppLocationRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/profile': {
+      id: '/app/profile'
+      path: '/profile'
+      fullPath: '/app/profile'
+      preLoaderRoute: typeof AppProfileRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/schemes': {
+      id: '/app/schemes'
+      path: '/schemes'
+      fullPath: '/app/schemes'
+      preLoaderRoute: typeof AppSchemesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/settings': {
+      id: '/app/settings'
+      path: '/settings'
+      fullPath: '/app/settings'
+      preLoaderRoute: typeof AppSettingsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/app/sos': {
+      id: '/app/sos'
+      path: '/sos'
+      fullPath: '/app/sos'
+      preLoaderRoute: typeof AppSosRouteImport
       parentRoute: typeof AppRoute
     }
   }

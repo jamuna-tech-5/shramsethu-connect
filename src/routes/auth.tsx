@@ -263,6 +263,22 @@ function AuthPage() {
               Create account
             </button>
           </div>
+          <div className="mt-4">
+  <button
+    type="button"
+    onClick={() => {
+      sessionStorage.setItem("shramsethu_demo", "true");
+      navigate({ to: "/app" });
+    }}
+    className="w-full rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 font-medium text-primary transition hover:bg-primary/10"
+  >
+    🎯 Try Demo Mode
+  </button>
+
+  <p className="mt-2 text-center text-xs text-muted-foreground">
+    Explore ShramSethu without registration
+  </p>
+</div>
 
           <form onSubmit={submit} className="mt-6 space-y-4">
             {mode === "signup" && (
