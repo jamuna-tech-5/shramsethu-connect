@@ -171,7 +171,15 @@ function AdminPage() {
 
           <div className="mt-4 space-y-2">
             {workersQ.isLoading && <p className="text-sm text-muted-foreground">Loading workers…</p>}
-            {!workersQ.isLoading && workers.length === 0 && (
+            {workersQ.isError && (
+              <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+                <p className="font-semibold">Could not load workers</p>
+                <p className="mt-1 break-words">
+                  {workersQ.error instanceof Error ? workersQ.error.message : "Unknown database error."}
+                </p>
+              </div>
+            )}
+            {!workersQ.isLoading && !workersQ.isError && workers.length === 0 && (
               <EmptyState icon={Users} title="No workers found" description="No workers match the current search." />
             )}
             {workers.map((w) => {
