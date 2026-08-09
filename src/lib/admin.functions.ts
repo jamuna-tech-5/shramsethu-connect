@@ -111,7 +111,10 @@ export const adminFetchAllWorkers = createServerFn({ method: "POST" })
       q = q.or(`full_name.ilike.${s},email.ilike.${s},phone.ilike.${s}`);
     }
     const { data: workers, error } = await q.limit(500);
-    if (error) throw new Error(error.message);
+    if (error) {
+      console.error("[admin] profiles query failed:", error.message, error.code ?? "");
+      throw new Error(`Database error while loading workers: ${error.message}`);
+    }
 
     const ids = (workers ?? []).map((w) => (w as WorkerRow).id);
     if (ids.length === 0) return { workers: [] };
@@ -132,10 +135,22 @@ export const adminFetchAllWorkers = createServerFn({ method: "POST" })
         .select("user_id, amount, occurred_on, type")
         .in("user_id", ids)
         .eq("type", "income"),
-      supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 }),
+      // Auth Admin API is a nice-to-have (last sign-in). It must never make the
+      // whole worker list disappear if it errors on a deployment.
+      supabaseAdmin.auth.admin
+        .listUsers({ page: 1, perPage: 1000 })
+        .catch((e: unknown) => {
+          console.error("[admin] listUsers failed:", e instanceof Error ? e.message : e);
+          return { data: { users: [] }, error: null } as { data: { users: { id: string; last_sign_in_at?: string | null }[] }; error: null };
+        }),
     ]);
 
-    if (docsRes.error) throw new Error(docsRes.error.message);
+    if (docsRes.error) {
+      console.error("[admin] documents query failed:", docsRes.error.message);
+      throw new Error(`Database error while loading documents: ${docsRes.error.message}`);
+    }
+    if (gigRes.error) console.error("[admin] gigscore query failed:", gigRes.error.message);
+    if (txRes.error) console.error("[admin] transactions query failed:", txRes.error.message);
 
     type DocRow = {
       id: string; user_id: string; kind: string; status: string;
