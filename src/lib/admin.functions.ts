@@ -1,11 +1,13 @@
 import { createServerFn } from "@tanstack/react-start";
 import { useSession } from "@tanstack/react-start/server";
 
+import { serverEnv } from "./env.server";
+
 // Built per request: env vars are only reliably injected at call time on
 // serverless hosts (Vercel/Cloudflare), not at module evaluation.
 function getSessionConfig() {
-  const secret = process.env.SESSION_SECRET?.trim();
-  if ((!secret || secret.length < 32) && process.env.NODE_ENV === "production") {
+  const secret = serverEnv("SESSION_SECRET");
+  if ((!secret || secret.length < 32) && serverEnv("NODE_ENV") === "production") {
     console.warn("[admin] SESSION_SECRET missing/too short (<32 chars) — admin sessions will not persist reliably.");
   }
   return {
@@ -15,7 +17,7 @@ function getSessionConfig() {
     cookie: {
       httpOnly: true,
       // http://localhost during local dev cannot store a Secure cookie.
-      secure: process.env.NODE_ENV === "production",
+      secure: serverEnv("NODE_ENV") === "production",
       sameSite: "lax" as const,
       path: "/",
     },
@@ -39,15 +41,6 @@ async function safeEqual(a: string, b: string): Promise<boolean> {
 }
 
 async function requireAdminSession() {
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || !process.env.SUPABASE_URL?.trim()) {
-    console.error("[admin] missing backend env", {
-      hasUrl: !!process.env.SUPABASE_URL,
-      hasServiceRole: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
-    });
-    throw new Error(
-      "Admin dashboard is not configured on this deployment. Add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to your hosting environment variables.",
-    );
-  }
   const session = await useSession<AdminSession>(getSessionConfig());
   if (!session.data.unlocked) {
     console.warn("[admin] request without unlocked session");
@@ -59,7 +52,7 @@ async function requireAdminSession() {
 export const adminUnlock = createServerFn({ method: "POST" })
   .inputValidator((v: { code: string }) => v)
   .handler(async ({ data }) => {
-    const expected = process.env.ADMIN_SECRET_CODE;
+    const expected = serverEnv("ADMIN_SECRET_CODE");
     if (!expected) {
       console.error("[admin] ADMIN_SECRET_CODE is not set on this deployment");
       throw new Error(
