@@ -99,7 +99,8 @@ export const adminFetchAllWorkers = createServerFn({ method: "POST" })
   .inputValidator((v: { search?: string } | undefined) => v ?? {})
   .handler(async ({ data }) => {
     await requireAdminSession();
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { getAdminSupabase } = await import("./admin-supabase.server");
+    const supabaseAdmin = getAdminSupabase();
 
     let q = supabaseAdmin
       .from("profiles")
@@ -190,7 +191,8 @@ export const adminGetDocumentUrl = createServerFn({ method: "POST" })
   .inputValidator((v: { path: string }) => v)
   .handler(async ({ data }) => {
     await requireAdminSession();
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { getAdminSupabase } = await import("./admin-supabase.server");
+    const supabaseAdmin = getAdminSupabase();
     const { data: signed, error } = await supabaseAdmin.storage
       .from("documents")
       .createSignedUrl(data.path, 60 * 10);
@@ -202,7 +204,8 @@ export const adminSetWorkerBlocked = createServerFn({ method: "POST" })
   .inputValidator((v: { id: string; blocked: boolean }) => v)
   .handler(async ({ data }) => {
     await requireAdminSession();
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { getAdminSupabase } = await import("./admin-supabase.server");
+    const supabaseAdmin = getAdminSupabase();
     const { error } = await supabaseAdmin
       .from("profiles")
       .update({ blocked: data.blocked } as never)
