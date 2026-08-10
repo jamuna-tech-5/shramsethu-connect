@@ -510,7 +510,7 @@ export const triggerSOS = createServerFn({ method: "POST" })
 
 // ---------- Schemes ----------
 export const listSchemes = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  //.middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { data, error } = await context.supabase
       .from("schemes")
