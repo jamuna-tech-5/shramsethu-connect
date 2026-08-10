@@ -45,7 +45,7 @@ type Ctx = {
   loading: boolean;
   signUp: (p: SignUpArgs) => Promise<{ ok: boolean; error?: string }>;
   signIn: (email: string, password: string) => Promise<boolean>;
-  signInWithGoogle: () => Promise<void>;
+  signInWithGoogle: (redirectTo?: string) => Promise<void>;
   signOut: () => Promise<void>;
   update: (patch: Partial<Profile>) => Promise<void>;
   reset: () => Promise<void>;
@@ -188,9 +188,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         return !error;
       },
-      signInWithGoogle: async () => {
+      signInWithGoogle: async (redirectTo?: string) => {
         const { lovable } = await import("@/integrations/lovable");
-        await lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin });
+        await lovable.auth.signInWithOAuth("google", {
+          redirect_uri: redirectTo ?? window.location.origin,
+        });
       },
       signOut: async () => {
         // Clear only this user's App Lock unlock session.
