@@ -106,115 +106,48 @@ type WorkerRow = {
 export const adminFetchAllWorkers = createServerFn({ method: "POST" })
   .inputValidator((v: { search?: string } | undefined) => v ?? {})
   .handler(async ({ data }) => {
-    await requireAdminSession();
-    const { getAdminSupabase } = await import("./admin-supabase.server");
-    const supabaseAdmin = getAdminSupabase();
+    const code = await adminCode();
+    const { getAdminRpcSupabase } = await import("./admin-supabase.server");
+    const supabase = getAdminRpcSupabase();
 
-    let q = supabaseAdmin
-      .from("profiles")
-      .select("id, full_name, email, phone, category, status, blocked, photo_url, onboarded, created_at, updated_at")
-      .order("created_at", { ascending: false });
-    if (data.search && data.search.trim()) {
-      const s = `%${data.search.trim()}%`;
-      q = q.or(`full_name.ilike.${s},email.ilike.${s},phone.ilike.${s}`);
-    }
-    const { data: workers, error } = await q.limit(500);
+    // Profiles + documents + income + GigScore are aggregated by a code-guarded
+    // SECURITY DEFINER function, so the Lovable-managed publishable key is
+    // enough — no service-role key needed on the host.
+    const { data: rows, error } = await supabase.rpc("admin_list_workers" as never, {
+      _code: code,
+      _search: data.search?.trim() || null,
+    } as never);
+
     if (error) {
-      console.error("[admin] profiles query failed:", error.message, error.code ?? "");
+      console.error("[admin] admin_list_workers failed:", error.message, error.code ?? "");
+      if ((error.message || "").includes("forbidden")) {
+        throw new Error("Admin authorization was rejected by the database. Re-enter the admin code.");
+      }
       throw new Error(`Database error while loading workers: ${error.message}`);
     }
 
-    const ids = (workers ?? []).map((w) => (w as WorkerRow).id);
-    if (ids.length === 0) return { workers: [] };
+    const workers = (Array.isArray(rows) ? rows : []) as (WorkerRow & {
+      last_sign_in_at: string | null;
+      documents: unknown[];
+      income: { count: number; total: number; last_at: string | null };
+      gigscore: number | null;
+      docs_verified: number;
+      docs_total: number;
+    })[];
 
-    const [docsRes, gigRes, txRes, authRes] = await Promise.all([
-      supabaseAdmin
-        .from("documents")
-        .select("id, user_id, kind, status, file_name, document_name, storage_path, mime_type, size_bytes, ocr_status, confidence_score, verification_reason, ai_verified_at, verified_at, created_at")
-        .in("user_id", ids)
-        .order("created_at", { ascending: false }),
-      supabaseAdmin
-        .from("gigscore_snapshots")
-        .select("user_id, score, computed_at")
-        .in("user_id", ids)
-        .order("computed_at", { ascending: false }),
-      supabaseAdmin
-        .from("transactions")
-        .select("user_id, amount, occurred_on, type")
-        .in("user_id", ids)
-        .eq("type", "income"),
-      // Auth Admin API is a nice-to-have (last sign-in). It must never make the
-      // whole worker list disappear if it errors on a deployment.
-      supabaseAdmin.auth.admin
-        .listUsers({ page: 1, perPage: 1000 })
-        .catch((e: unknown) => {
-          console.error("[admin] listUsers failed:", e instanceof Error ? e.message : e);
-          return { data: { users: [] }, error: null } as { data: { users: { id: string; last_sign_in_at?: string | null }[] }; error: null };
-        }),
-    ]);
-
-    if (docsRes.error) {
-      console.error("[admin] documents query failed:", docsRes.error.message);
-      throw new Error(`Database error while loading documents: ${docsRes.error.message}`);
-    }
-    if (gigRes.error) console.error("[admin] gigscore query failed:", gigRes.error.message);
-    if (txRes.error) console.error("[admin] transactions query failed:", txRes.error.message);
-
-    type DocRow = {
-      id: string; user_id: string; kind: string; status: string;
-      file_name: string | null; document_name: string | null;
-      storage_path: string | null; mime_type: string | null; size_bytes: number | null;
-      ocr_status: string | null; confidence_score: number | null;
-      verification_reason: string | null; ai_verified_at: string | null;
-      verified_at: string | null; created_at: string;
-    };
-    const docsByUser = new Map<string, DocRow[]>();
-    for (const d of docsRes.data ?? []) {
-      const row = d as DocRow;
-      if (!docsByUser.has(row.user_id)) docsByUser.set(row.user_id, []);
-      docsByUser.get(row.user_id)!.push(row);
-    }
-    const gigByUser = new Map<string, number>();
-    for (const g of gigRes.data ?? []) {
-      const row = g as { user_id: string; score: number };
-      if (!gigByUser.has(row.user_id)) gigByUser.set(row.user_id, row.score);
-    }
-    const incByUser = new Map<string, { count: number; total: number; last_at: string | null }>();
-    for (const t of txRes.data ?? []) {
-      const row = t as { user_id: string; amount: number; occurred_on: string };
-      const cur = incByUser.get(row.user_id) ?? { count: 0, total: 0, last_at: null };
-      cur.count += 1;
-      cur.total += Number(row.amount) || 0;
-      if (!cur.last_at || row.occurred_on > cur.last_at) cur.last_at = row.occurred_on;
-      incByUser.set(row.user_id, cur);
-    }
-    const lastSignInByUser = new Map<string, string | null>();
-    for (const u of authRes.data?.users ?? []) {
-      lastSignInByUser.set(u.id, u.last_sign_in_at ?? null);
-    }
-
-    const result = (workers ?? []).map((w) => {
-      const row = w as WorkerRow;
-      const docs = docsByUser.get(row.id) ?? [];
-      const docs_verified = docs.filter((d) => d.status === "verified").length;
-      return {
-        ...row,
-        last_sign_in_at: lastSignInByUser.get(row.id) ?? null,
-        documents: docs,
-        income: incByUser.get(row.id) ?? { count: 0, total: 0, last_at: null },
-        gigscore: gigByUser.get(row.id) ?? null,
-        docs_verified,
-        docs_total: docs.length,
-      };
-    });
-    return { workers: result };
+    return { workers };
   });
 
 export const adminGetDocumentUrl = createServerFn({ method: "POST" })
   .inputValidator((v: { path: string }) => v)
   .handler(async ({ data }) => {
     await requireAdminSession();
-    const { getAdminSupabase } = await import("./admin-supabase.server");
+    const { getAdminSupabase, hasServiceRole } = await import("./admin-supabase.server");
+    if (!hasServiceRole()) {
+      throw new Error(
+        "File preview needs the optional backend service key on this deployment. Worker, document, income and GigScore data are still available.",
+      );
+    }
     const supabaseAdmin = getAdminSupabase();
     const { data: signed, error } = await supabaseAdmin.storage
       .from("documents")
@@ -226,13 +159,13 @@ export const adminGetDocumentUrl = createServerFn({ method: "POST" })
 export const adminSetWorkerBlocked = createServerFn({ method: "POST" })
   .inputValidator((v: { id: string; blocked: boolean }) => v)
   .handler(async ({ data }) => {
-    await requireAdminSession();
-    const { getAdminSupabase } = await import("./admin-supabase.server");
-    const supabaseAdmin = getAdminSupabase();
-    const { error } = await supabaseAdmin
-      .from("profiles")
-      .update({ blocked: data.blocked } as never)
-      .eq("id", data.id);
+    const code = await adminCode();
+    const { getAdminRpcSupabase } = await import("./admin-supabase.server");
+    const { error } = await getAdminRpcSupabase().rpc("admin_set_worker_blocked" as never, {
+      _code: code,
+      _id: data.id,
+      _blocked: data.blocked,
+    } as never);
     if (error) throw new Error(error.message);
     return { ok: true as const };
   });
