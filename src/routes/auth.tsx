@@ -14,7 +14,13 @@ import { adminUnlock } from "@/lib/admin.functions";
 
 const searchSchema = z.object({
   mode: z.enum(["signin", "signup"]).optional(),
+  next: z.string().optional(),
 });
+
+/** Only same-origin relative paths may be used as a post-login return target. */
+function safeNext(next?: string) {
+  return next && next.startsWith("/") && !next.startsWith("//") ? next : null;
+}
 
 export const Route = createFileRoute("/auth")({
   validateSearch: (s) => searchSchema.parse(s),
@@ -31,7 +37,8 @@ function passwordStrength(pw: string) {
 }
 
 function AuthPage() {
-  const { mode: initialMode } = Route.useSearch();
+  const { mode: initialMode, next } = Route.useSearch();
+  const returnTo = safeNext(next);
   const [role, setRole] = useState<"choose" | "worker" | "admin">("choose");
   const [mode, setMode] = useState<"signin" | "signup">(initialMode ?? "signin");
   const [show, setShow] = useState(false);
@@ -45,10 +52,19 @@ function AuthPage() {
 
   useEffect(() => {
     if (role === "worker" && isAuthed) {
+      if (returnTo) {
+        window.location.href = returnTo;
+        return;
+      }
       if (profile && !profile.onboarded) navigate({ to: "/onboarding" });
       else navigate({ to: "/app" });
     }
-  }, [isAuthed, profile, navigate, role]);
+  }, [isAuthed, profile, navigate, role, returnTo]);
+
+  // A deep link that already carries a return target is always the worker flow.
+  useEffect(() => {
+    if (returnTo) setRole("worker");
+  }, [returnTo]);
 
   const strength = useMemo(() => passwordStrength(form.password), [form.password]);
   const strengthLabel = ["Too weak", "Weak", "Okay", "Strong", "Excellent"][strength];
@@ -101,7 +117,7 @@ function AuthPage() {
 
   const google = async () => {
     try {
-      await signInWithGoogle();
+      await signInWithGoogle(returnTo ? window.location.href : undefined);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Google sign-in failed");
     }
