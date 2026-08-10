@@ -103,6 +103,24 @@ type WorkerRow = {
   updated_at: string | null;
 };
 
+type AdminDocRow = {
+  id: string;
+  user_id: string;
+  kind: string;
+  status: string;
+  file_name: string | null;
+  document_name: string | null;
+  storage_path: string | null;
+  mime_type: string | null;
+  size_bytes: number | null;
+  ocr_status: string | null;
+  confidence_score: number | null;
+  verification_reason: string | null;
+  ai_verified_at: string | null;
+  verified_at: string | null;
+  created_at: string;
+};
+
 export const adminFetchAllWorkers = createServerFn({ method: "POST" })
   .inputValidator((v: { search?: string } | undefined) => v ?? {})
   .handler(async ({ data }) => {
@@ -128,7 +146,7 @@ export const adminFetchAllWorkers = createServerFn({ method: "POST" })
 
     const workers = (Array.isArray(rows) ? rows : []) as (WorkerRow & {
       last_sign_in_at: string | null;
-      documents: unknown[];
+      documents: AdminDocRow[];
       income: { count: number; total: number; last_at: string | null };
       gigscore: number | null;
       docs_verified: number;
