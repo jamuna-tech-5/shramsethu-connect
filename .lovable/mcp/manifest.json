@@ -1,0 +1,147 @@
+{
+  "version": 1,
+  "sdk_version": "0.26.1",
+  "path": "/mcp",
+  "auth": {
+    "type": "oauth",
+    "issuer": "https://jlumzkxeapocdwmyyskm.supabase.co/auth/v1",
+    "accepted_audiences": [
+      "authenticated"
+    ]
+  },
+  "mcp": {
+    "server": {
+      "name": "shramsethu-your-digital-work-passport",
+      "version": "0.1.0",
+      "title": "ShramSethu: Your Digital Work Passport"
+    },
+    "tools": [
+      {
+        "name": "get_profile",
+        "title": "Get worker profile",
+        "description": "Return the signed-in worker's ShramSethu profile: name, contact, work category, skills, location and verification status.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {}
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "get_gigscore",
+        "title": "Get GigScore",
+        "description": "Return the signed-in worker's latest GigScore snapshot with its score breakdown.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {}
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "list_documents",
+        "title": "List documents",
+        "description": "List the signed-in worker's uploaded documents and income proofs with verification status, AI confidence and extracted fields. No file contents are returned.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "status": {
+              "description": "Filter by verification status.",
+              "type": "string",
+              "enum": [
+                "pending",
+                "verified",
+                "rejected"
+              ]
+            },
+            "limit": {
+              "description": "Maximum rows to return (default 20).",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            }
+          }
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "list_income",
+        "title": "List income records",
+        "description": "List the signed-in worker's income records (amount, source, date, verification flag), newest first. Optionally restrict to a date range or verified records only.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "from": {
+              "description": "Earliest occurred_on date, ISO format YYYY-MM-DD.",
+              "type": "string"
+            },
+            "to": {
+              "description": "Latest occurred_on date, ISO format YYYY-MM-DD.",
+              "type": "string"
+            },
+            "verified_only": {
+              "description": "Return only AI/admin verified records.",
+              "type": "boolean"
+            },
+            "limit": {
+              "description": "Maximum rows to return (default 50).",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            }
+          }
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "search_schemes",
+        "title": "Search government schemes",
+        "description": "Search the ShramSethu catalogue of Indian government welfare and support schemes for gig workers by keyword.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "query": {
+              "description": "Keyword to match against scheme name, summary or authority.",
+              "type": "string"
+            },
+            "limit": {
+              "description": "Maximum rows to return (default 10).",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            }
+          }
+        },
+        "outputSchema": null
+      }
+    ]
+  }
+}
