@@ -5,6 +5,7 @@
 //     React/TanStack dedupe, error logger plugins, and sandbox detection (port/host/strictPort).
 // You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
+import { mcpPlugin } from "@lovable.dev/mcp-js/stacks/tanstack/vite";
 
 // Outside Lovable the deploy plugin defaults to the Cloudflare preset. On Vercel
 // that produces a Worker bundle Vercel cannot run, so every server function
@@ -22,6 +23,7 @@ export default defineConfig({
   // OCR + forensic AI audit; raise the function max duration in Vercel
   // project settings if verification stalls on "Needs Review".
   ...(isVercel ? { nitro: { preset: "vercel" } } : {}),
+  plugins: [mcpPlugin()],
   tanstackStart: {
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
     // nitro/vite builds from this
