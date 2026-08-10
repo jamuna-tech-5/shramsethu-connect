@@ -44,6 +44,24 @@ export type Database = {
         }
         Relationships: []
       }
+      admin_config: {
+        Row: {
+          code_hash: string
+          id: number
+          updated_at: string
+        }
+        Insert: {
+          code_hash: string
+          id?: number
+          updated_at?: string
+        }
+        Update: {
+          code_hash?: string
+          id?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       app_lock_resets: {
         Row: {
           created_at: string
@@ -872,9 +890,18 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      admin_code_ok: { Args: { _code: string }; Returns: boolean }
+      admin_list_workers: {
+        Args: { _code: string; _search?: string }
+        Returns: Json
+      }
       admin_review_document: {
         Args: { _decision: string; _doc_id: string; _note?: string }
         Returns: undefined
+      }
+      admin_set_worker_blocked: {
+        Args: { _blocked: boolean; _code: string; _id: string }
+        Returns: boolean
       }
       has_role: {
         Args: {
