@@ -24,7 +24,7 @@ function getSessionConfig() {
   };
 }
 
-type AdminSession = { unlocked?: boolean; unlockedAt?: number };
+type AdminSession = { unlocked?: boolean; unlockedAt?: number; code?: string };
 
 // Runtime-agnostic constant-time comparison (Web Crypto works on Node, Vercel and Workers).
 async function safeEqual(a: string, b: string): Promise<boolean> {
@@ -49,6 +49,14 @@ async function requireAdminSession() {
   return session;
 }
 
+/** The validated admin code for this session (used to authorize backend RPCs). */
+async function adminCode() {
+  const session = await requireAdminSession();
+  const code = session.data.code || serverEnv("ADMIN_SECRET_CODE");
+  if (!code) throw new Error("Admin access is not configured on this deployment.");
+  return code;
+}
+
 export const adminUnlock = createServerFn({ method: "POST" })
   .inputValidator((v: { code: string }) => v)
   .handler(async ({ data }) => {
@@ -66,7 +74,7 @@ export const adminUnlock = createServerFn({ method: "POST" })
       return { ok: false as const };
     }
     const session = await useSession<AdminSession>(getSessionConfig());
-    await session.update({ unlocked: true, unlockedAt: Date.now() });
+    await session.update({ unlocked: true, unlockedAt: Date.now(), code: data.code.trim() });
     return { ok: true as const };
   });
 
